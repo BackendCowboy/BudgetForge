@@ -109,20 +109,24 @@ services:
     depends_on:
       - prometheus
 
-  # Jenkins CI/CD Pipeline
+  # Jenkins CI/CD Pipeline (Enhanced with Docker CLI and .NET SDK)
   jenkins:
-    image: jenkins/jenkins:lts
+    build:
+      context: ./jenkins
+      dockerfile: Dockerfile
     container_name: budgetforge-jenkins
     restart: unless-stopped
     user: root
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
     ports:
       - "8082:8080"
       - "50000:50000"
     volumes:
       - jenkins_data:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts:/scripts:ro
     networks:
       - budgetforge-backend
       - budgetforge-monitoring

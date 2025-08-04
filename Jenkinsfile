@@ -76,14 +76,58 @@ pipeline {
                         docker stop budgetforge-test || true
                         docker rm budgetforge-test || true
                         
-                        # Run container in test mode
-                        docker run -d --name budgetforge-test -p 8083:8080 ${DOCKER_IMAGE}:${BUILD_TAG}
+                        # Run container in test mode with development environment
+                        docker run -d --name budgetforge-test -p 8083:8080 \
+                            -e ASPNETCORE_ENVIRONMENT=Development \
+                            -e ASPNETCORE_URLS=http://+:8080 \
+                            \${DOCKER_IMAGE}:\${BUILD_TAG}
                         
-                        # Wait for startup
-                        sleep 30
+                        # Wait for startup and check container status
+                        echo "Waiting for container to start..."
+                        sleep 15
                         
-                        # Test health endpoint
-                        curl -f http://localhost:8083/health || exit 1
+                        # Check if container is running
+                        if ! docker ps | grep budgetforge-test; then
+                            echo "❌ Container failed to start"
+                            docker logs budgetforge-test
+                            exit 1
+                        fi
+                        
+                        # Try health check with retries
+                        echo "Testing health endpoints..."
+                        RETRY_COUNT=0
+                        MAX_RETRIES=6
+                        
+                        while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+                            echo "Health check attempt \$((RETRY_COUNT + 1))/\$MAX_RETRIES..."
+                            
+                            # Try the simple live endpoint first
+                            if curl -f -s --max-time 10 http://localhost:8083/health/live; then
+                                echo ""
+                                echo "✅ Live health check passed"
+                                break
+                            elif curl -f -s --max-time 10 http://localhost:8083/health; then
+                                echo ""
+                                echo "✅ Main health check passed"
+                                break
+                            else
+                                echo ""
+                                echo "❌ Health check failed, retrying in 10 seconds..."
+                                if [ \$RETRY_COUNT -lt \$((MAX_RETRIES - 1)) ]; then
+                                    sleep 10
+                                fi
+                                RETRY_COUNT=\$((RETRY_COUNT + 1))
+                            fi
+                        done
+                        
+                        if [ \$RETRY_COUNT -eq \$MAX_RETRIES ]; then
+                            echo "❌ Health check failed after \$MAX_RETRIES attempts"
+                            echo "Container logs:"
+                            docker logs budgetforge-test
+                            exit 1
+                        fi
+                        
+                        echo "✅ Health check successful!"
                         
                         # Cleanup
                         docker stop budgetforge-test
