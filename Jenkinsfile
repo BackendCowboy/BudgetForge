@@ -102,11 +102,11 @@ pipeline {
                             echo "Health check attempt \$((RETRY_COUNT + 1))/\$MAX_RETRIES..."
                             
                             # Try the simple live endpoint first
-                            if curl -f -s --max-time 10 http://localhost:8083/health/live; then
+                            if curl -f -s --max-time 10 http://localhost:8085/health/live; then
                                 echo ""
                                 echo "✅ Live health check passed"
                                 break
-                            elif curl -f -s --max-time 10 http://localhost:8083/health; then
+                            elif curl -f -s --max-time 10 http://localhost:8085/health; then
                                 echo ""
                                 echo "✅ Main health check passed"
                                 break
