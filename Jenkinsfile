@@ -77,7 +77,7 @@ pipeline {
                         docker rm budgetforge-test || true
                         
                         # Run container in test mode with development environment
-                        docker run -d --name budgetforge-test -p 8083:8080 \
+                        docker run -d --name budgetforge-test -p 8080:8080 \
                             -e ASPNETCORE_ENVIRONMENT=Development \
                             -e ASPNETCORE_URLS=http://+:8080 \
                             \${DOCKER_IMAGE}:\${BUILD_TAG}
