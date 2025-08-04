@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database (your existing setup enhanced)
   postgres:
@@ -25,7 +23,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # BudgetForge API (NEW - your containerized application)
+  # BudgetForge API (your containerized application)
   api:
     build:
       context: .
@@ -38,7 +36,7 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=budgetforge;Username=budgetforge_user;Password=your_secure_password_123;Port=5432
     ports:
-      - "5001:8080"  # Changed to 5001 to avoid conflict with pgAdmin
+      - "5001:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,7 +50,7 @@ services:
       retries: 3
       start_period: 60s
 
-  # pgAdmin for database management (your existing setup enhanced)
+  # pgAdmin for database management
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: budgetforge-pgadmin
@@ -63,7 +61,7 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: 'False'
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
-      - "8080:80"  # Keeping your existing port
+      - "8080:80"
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,7 +70,7 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
-  # Prometheus for metrics collection (NEW)
+  # Prometheus for metrics collection
   prometheus:
     image: prom/prometheus:latest
     container_name: budgetforge-prometheus
@@ -93,7 +91,7 @@ services:
     depends_on:
       - api
 
-  # Grafana for dashboards (NEW)
+  # Grafana for dashboards
   grafana:
     image: grafana/grafana:latest
     container_name: budgetforge-grafana
@@ -111,7 +109,33 @@ services:
     depends_on:
       - prometheus
 
-# Persistent volumes (enhanced)
+  # Jenkins CI/CD Pipeline
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: budgetforge-jenkins
+    restart: unless-stopped
+    user: root
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    ports:
+      - "8082:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - budgetforge-backend
+      - budgetforge-monitoring
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+# Persistent volumes
 volumes:
   postgres_data:
     driver: local
@@ -121,8 +145,10 @@ volumes:
     driver: local
   grafana_data:
     driver: local
+  jenkins_data:
+    driver: local
 
-# Network segmentation for security (enhanced)
+# Network segmentation for security
 networks:
   budgetforge-backend:
     driver: bridge
