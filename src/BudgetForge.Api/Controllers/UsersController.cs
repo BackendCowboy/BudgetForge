@@ -1,38 +1,32 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using BudgetForge.Domain.Entities;
+using BudgetForge.Infrastructure.Data;
 
 namespace BudgetForge.Api.Controllers
 {
-    /// <summary>
-    /// API Controller for managing users
-    /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class UsersController : ControllerBase
     {
-        // For now, we'll use a simple list to store users (in-memory)
-        // Later, we'll replace this with a real database
-        private static readonly List<User> _users = new List<User>();
-        private static int _nextId = 1;
+        private readonly ApplicationDbContext _context;
 
-        /// <summary>
-        /// Get all users
-        /// GET /api/users
-        /// </summary>
-        [HttpGet]
-        public ActionResult<IEnumerable<User>> GetAllUsers()
+        public UsersController(ApplicationDbContext context)
         {
-            return Ok(_users);
+            _context = context;
         }
 
-        /// <summary>
-        /// Get a specific user by ID
-        /// GET /api/users/5
-        /// </summary>
-        [HttpGet("{id}")]
-        public ActionResult<User> GetUser(int id)
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<User>>> GetAllUsers()
         {
-            var user = _users.FirstOrDefault(u => u.Id == id);
+            var users = await _context.Users.ToListAsync();
+            return Ok(users);
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<User>> GetUser(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
             
             if (user == null)
             {
@@ -42,76 +36,54 @@ namespace BudgetForge.Api.Controllers
             return Ok(user);
         }
 
-        /// <summary>
-        /// Create a new user
-        /// POST /api/users
-        /// </summary>
         [HttpPost]
-        public ActionResult<User> CreateUser(CreateUserRequest request)
+        public async Task<ActionResult<User>> CreateUser(CreateUserRequest request)
         {
-            // Validate the request
+            // Validate request
             if (string.IsNullOrWhiteSpace(request.FirstName))
-            {
                 return BadRequest("First name is required");
-            }
-
+            
             if (string.IsNullOrWhiteSpace(request.LastName))
-            {
                 return BadRequest("Last name is required");
-            }
-
+            
             if (string.IsNullOrWhiteSpace(request.Email))
-            {
                 return BadRequest("Email is required");
-            }
 
-            // Check if email already exists
-            if (_users.Any(u => u.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase)))
+            // Check for duplicate email
+            if (await _context.Users.AnyAsync(u => u.Email == request.Email))
             {
                 return BadRequest("A user with this email already exists");
             }
 
-            // Create the new user
-            var user = new User(request.FirstName, request.LastName, request.Email)
-            {
-                Id = _nextId++
-            };
+            // Create user
+            var user = new User(request.FirstName, request.LastName, request.Email);
+            
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
 
-            _users.Add(user);
-
-            // Return 201 Created with the new user
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
         }
 
-        /// <summary>
-        /// Update an existing user
-        /// PUT /api/users/5
-        /// </summary>
         [HttpPut("{id}")]
-        public ActionResult<User> UpdateUser(int id, UpdateUserRequest request)
+        public async Task<ActionResult<User>> UpdateUser(int id, UpdateUserRequest request)
         {
-            var user = _users.FirstOrDefault(u => u.Id == id);
+            var user = await _context.Users.FindAsync(id);
             
             if (user == null)
             {
                 return NotFound($"User with ID {id} not found");
             }
 
-            // Update the user properties
+            // Update properties
             if (!string.IsNullOrWhiteSpace(request.FirstName))
-            {
                 user.FirstName = request.FirstName;
-            }
-
+            
             if (!string.IsNullOrWhiteSpace(request.LastName))
-            {
                 user.LastName = request.LastName;
-            }
-
+            
             if (!string.IsNullOrWhiteSpace(request.Email))
             {
-                // Check if new email already exists (excluding current user)
-                if (_users.Any(u => u.Id != id && u.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase)))
+                if (await _context.Users.AnyAsync(u => u.Id != id && u.Email == request.Email))
                 {
                     return BadRequest("A user with this email already exists");
                 }
@@ -119,38 +91,32 @@ namespace BudgetForge.Api.Controllers
             }
 
             user.UpdatedAt = DateTime.UtcNow;
+            
+            await _context.SaveChangesAsync();
 
             return Ok(user);
         }
 
-        /// <summary>
-        /// Delete a user (soft delete)
-        /// DELETE /api/users/5
-        /// </summary>
         [HttpDelete("{id}")]
-        public ActionResult DeleteUser(int id)
+        public async Task<ActionResult> DeleteUser(int id)
         {
-            var user = _users.FirstOrDefault(u => u.Id == id);
+            var user = await _context.Users.FindAsync(id);
             
             if (user == null)
             {
                 return NotFound($"User with ID {id} not found");
             }
 
-            // Soft delete - just deactivate the user
             user.Deactivate();
+            await _context.SaveChangesAsync();
 
-            return NoContent(); // 204 No Content
+            return NoContent();
         }
 
-        /// <summary>
-        /// Update user's last login time
-        /// POST /api/users/5/login
-        /// </summary>
         [HttpPost("{id}/login")]
-        public ActionResult RecordLogin(int id)
+        public async Task<ActionResult> RecordLogin(int id)
         {
-            var user = _users.FirstOrDefault(u => u.Id == id);
+            var user = await _context.Users.FindAsync(id);
             
             if (user == null)
             {
@@ -163,14 +129,12 @@ namespace BudgetForge.Api.Controllers
             }
 
             user.UpdateLastLogin();
+            await _context.SaveChangesAsync();
 
             return Ok(new { message = "Login recorded successfully", lastLogin = user.LastLoginAt });
         }
     }
 
-    /// <summary>
-    /// Request model for creating a new user
-    /// </summary>
     public class CreateUserRequest
     {
         public string FirstName { get; set; } = string.Empty;
@@ -178,9 +142,6 @@ namespace BudgetForge.Api.Controllers
         public string Email { get; set; } = string.Empty;
     }
 
-    /// <summary>
-    /// Request model for updating an existing user
-    /// </summary>
     public class UpdateUserRequest
     {
         public string? FirstName { get; set; }

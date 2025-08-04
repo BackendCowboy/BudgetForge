@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: budgetforge-postgres
+    environment:
+      POSTGRES_DB: budgetforge
+      POSTGRES_USER: budgetforge_user
+      POSTGRES_PASSWORD: your_secure_password_123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d
+    networks:
+      - budgetforge-network
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: budgetforge-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@budgetforge.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    networks:
+      - budgetforge-network
+
+volumes:
+  postgres_data:
+
+networks:
+  budgetforge-network:
+    driver: bridge
