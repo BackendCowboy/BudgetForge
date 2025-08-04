@@ -55,11 +55,14 @@ pipeline {
             steps {
                 echo "🐳 Building Docker image with tag: ${BUILD_TAG}"
                 script {
-                    def image = docker.build("${DOCKER_IMAGE}:${BUILD_TAG}", "-f src/BudgetForge.Api/Dockerfile .")
-                    docker.withRegistry('', '') {
-                        image.push()
-                        image.push('latest')
-                    }
+                    sh """
+                        # Build Docker image using shell commands
+                        docker build -f src/BudgetForge.Api/Dockerfile -t ${DOCKER_IMAGE}:${BUILD_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${BUILD_TAG} ${DOCKER_IMAGE}:latest
+                        
+                        # Show the built image
+                        docker images ${DOCKER_IMAGE}
+                    """
                 }
             }
         }
