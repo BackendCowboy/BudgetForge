@@ -1,9 +1,11 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database (your existing setup enhanced)
   postgres:
     image: postgres:15-alpine
     container_name: budgetforge-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: budgetforge
       POSTGRES_USER: budgetforge_user
@@ -15,25 +17,119 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init:/docker-entrypoint-initdb.d
     networks:
-      - budgetforge-network
+      - budgetforge-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budgetforge_user -d budgetforge"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
-  # Optional: pgAdmin for database management
+  # BudgetForge API (NEW - your containerized application)
+  api:
+    build:
+      context: .
+      dockerfile: src/BudgetForge.Api/Dockerfile
+      target: runtime
+    container_name: budgetforge-api
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=budgetforge;Username=budgetforge_user;Password=your_secure_password_123;Port=5432
+    ports:
+      - "5001:8080"  # Changed to 5001 to avoid conflict with pgAdmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - budgetforge-backend
+      - budgetforge-frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # pgAdmin for database management (your existing setup enhanced)
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: budgetforge-pgadmin
+    restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@budgetforge.com
       PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
-      - "8080:80"
+      - "8080:80"  # Keeping your existing port
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
-      - budgetforge-network
+      - budgetforge-backend
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
+  # Prometheus for metrics collection (NEW)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: budgetforge-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    networks:
+      - budgetforge-monitoring
+    depends_on:
+      - api
+
+  # Grafana for dashboards (NEW)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: budgetforge-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana:/etc/grafana/provisioning
+    networks:
+      - budgetforge-monitoring
+    depends_on:
+      - prometheus
+
+# Persistent volumes (enhanced)
 volumes:
   postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
 
+# Network segmentation for security (enhanced)
 networks:
-  budgetforge-network:
+  budgetforge-backend:
     driver: bridge
+    name: budgetforge-backend
+  budgetforge-frontend:
+    driver: bridge  
+    name: budgetforge-frontend
+  budgetforge-monitoring:
+    driver: bridge
+    name: budgetforge-monitoring
