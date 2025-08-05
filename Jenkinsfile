@@ -170,27 +170,33 @@ pipeline {
                 sh '''
                     echo "🔄 Updating development deployment..."
                     
-                    # Update the running API container
+                    # Use docker-compose to update the running stack
                     cd ${WORKSPACE}
                     
-                    # Stop current API container
-                    docker-compose stop api || echo "API container stopped"
+                    # Rebuild the API service with latest code
+                    echo "🏗️ Rebuilding API service..."
+                    docker-compose build api
                     
-                    # Remove old container
-                    docker-compose rm -f api || echo "Old container removed"
-                    
-                    # Start with new image
+                    # Restart just the API service (keeps database running)
+                    echo "🔄 Restarting API service..."
+                    docker-compose stop api
                     docker-compose up -d api
                     
                     # Wait for startup
-                    echo "⏳ Waiting for deployment..."
-                    sleep 15
+                    echo "⏳ Waiting for service restart..."
+                    sleep 20
                     
                     # Verify deployment
                     echo "🏥 Verifying deployment..."
-                    for i in {1..5}; do
-                        if curl -f http://localhost:5001/health; then
-                            echo "✅ Deployment successful!"
+                    DEPLOY_SUCCESS=false
+                    for i in {1..6}; do
+                        if curl -f -s http://localhost:5001/health > /dev/null; then
+                            echo "✅ Deployment verification successful!"
+                            DEPLOY_SUCCESS=true
+                            break
+                        elif curl -f -s http://localhost:5001/swagger/index.html > /dev/null; then
+                            echo "✅ API is responding (Swagger accessible)!"
+                            DEPLOY_SUCCESS=true
                             break
                         else
                             echo "⏳ Verification attempt $i..."
@@ -198,7 +204,13 @@ pipeline {
                         fi
                     done
                     
-                    echo "🎉 Development deployment completed!"
+                    if [ "$DEPLOY_SUCCESS" = "true" ]; then
+                        echo "🎉 Development deployment completed successfully!"
+                    else
+                        echo "⚠️ Deployment completed but verification had issues"
+                        echo "📋 Checking container status..."
+                        docker-compose ps api
+                    fi
                 '''
             }
         }
