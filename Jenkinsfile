@@ -170,6 +170,10 @@ pipeline {
                 sh '''
                     echo "🔄 Updating running API container with new image..."
                     
+                    # First, let's see what networks exist
+                    echo "📋 Available networks:"
+                    docker network ls | grep budgetforge || docker network ls
+                    
                     # Stop the running API container
                     docker stop budgetforge-api || echo "API container stopped"
                     
@@ -177,10 +181,22 @@ pipeline {
                     docker rm budgetforge-api || echo "Old container removed"
                     
                     # Start new container with the fresh image we just built
+                    # Try multiple network names until one works
+                    if docker network ls | grep -q "budgetforge-backend"; then
+                        NETWORK="budgetforge-backend"
+                    elif docker network ls | grep -q "budgetforge_budgetforge-backend"; then
+                        NETWORK="budgetforge_budgetforge-backend"
+                    elif docker network ls | grep -q "budgetforge_default"; then
+                        NETWORK="budgetforge_default"
+                    else
+                        NETWORK=$(docker network ls | grep budgetforge | head -1 | awk '{print $2}')
+                    fi
+                    
+                    echo "🌐 Using network: $NETWORK"
+                    
                     docker run -d \
                         --name budgetforge-api \
-                        --network budgetforge_budgetforge-backend \
-                        --network budgetforge_budgetforge-frontend \
+                        --network "$NETWORK" \
                         -p 5001:8080 \
                         -e ASPNETCORE_ENVIRONMENT=Development \
                         -e ASPNETCORE_URLS=http://+:8080 \
@@ -200,6 +216,10 @@ pipeline {
                         echo "✅ Swagger accessible!"
                     else
                         echo "⚠️ Endpoints not responding yet, but container is running"
+                        echo "📋 Container status:"
+                        docker ps | grep budgetforge-api || echo "Container not found"
+                        echo "📋 Container logs:"
+                        docker logs budgetforge-api --tail 5 || echo "No logs available"
                     fi
                     
                     echo "🎉 Deployment completed!"
