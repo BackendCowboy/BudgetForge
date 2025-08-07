@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace BudgetForge.Domain.Entities
 {
@@ -15,6 +16,9 @@ namespace BudgetForge.Domain.Entities
         public string LastName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
 
+        // Authentication properties
+        public string PasswordHash { get; set; } = string.Empty;
+
         // Timestamps - important for auditing
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
@@ -23,6 +27,10 @@ namespace BudgetForge.Domain.Entities
         // User status
         public bool IsActive { get; set; } = true;
         public bool EmailConfirmed { get; set; } = false;
+
+        // Navigation properties for authentication
+        public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
+        public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 
         // Computed property - combines first and last name
         public string FullName => $"{FirstName} {LastName}".Trim();
@@ -61,6 +69,22 @@ namespace BudgetForge.Domain.Entities
         public void Activate()
         {
             IsActive = true;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Method to update user information
+        public void UpdateInfo(string firstName, string lastName, string email)
+        {
+            FirstName = firstName;
+            LastName = lastName;
+            Email = email;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Method to update password hash
+        public void UpdatePasswordHash(string passwordHash)
+        {
+            PasswordHash = passwordHash;
             UpdatedAt = DateTime.UtcNow;
         }
 

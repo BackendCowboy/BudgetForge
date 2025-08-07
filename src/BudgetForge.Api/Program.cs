@@ -1,103 +1,168 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using BudgetForge.Application.Models;
+using BudgetForge.Application.Services;
 using BudgetForge.Infrastructure.Data;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
-// Add Entity Framework
+// Configure Entity Framework
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add health checks for Kubernetes and Docker
+// Configure JWT Settings
+builder.Services.Configure<JwtSettings>(
+    builder.Configuration.GetSection("JwtSettings"));
+
+// Register JWT Token Service
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// Register Metrics Service
+builder.Services.AddSingleton<IMetricsService, MetricsService>();
+
+// Get JWT settings for authentication configuration
+var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
+
+if (jwtSettings == null || string.IsNullOrEmpty(jwtSettings.SecretKey))
+{
+    throw new InvalidOperationException("JWT settings are not properly configured");
+}
+
+// Configure Authentication
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.SaveToken = jwtSettings.SaveToken;
+    options.RequireHttpsMetadata = jwtSettings.RequireHttpsMetadata;
+    
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = jwtSettings.ValidateIssuerSigningKey,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
+        ValidateIssuer = jwtSettings.ValidateIssuer,
+        ValidIssuer = jwtSettings.Issuer,
+        ValidateAudience = jwtSettings.ValidateAudience,
+        ValidAudience = jwtSettings.Audience,
+        ValidateLifetime = jwtSettings.ValidateLifetime,
+        ClockSkew = TimeSpan.FromSeconds(jwtSettings.ClockSkewSeconds)
+    };
+
+    // Configure JWT events for better error handling
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+            {
+                context.Response.Headers.Append("Token-Expired", "true");
+            }
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            context.HandleResponse();
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            
+            var result = System.Text.Json.JsonSerializer.Serialize(new 
+            { 
+                error = "You are not authorized",
+                details = context.ErrorDescription 
+            });
+            
+            return context.Response.WriteAsync(result);
+        },
+        OnForbidden = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+            
+            var result = System.Text.Json.JsonSerializer.Serialize(new 
+            { 
+                error = "You do not have permission to access this resource" 
+            });
+            
+            return context.Response.WriteAsync(result);
+        }
+    };
+});
+
+// Configure Authorization
+builder.Services.AddAuthorization(options =>
+{
+    // Add default policy
+    options.DefaultPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+        
+    // Add custom policies
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireRole("Admin"));
+        
+    options.AddPolicy("UserOrAdmin", policy =>
+        policy.RequireRole("User", "Admin"));
+});
+
+// Configure CORS (adjust origins as needed for your frontend)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("DefaultPolicy", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3001") // Add your frontend URLs
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Add Health Checks - FIXED: Changed AddEntityFrameworkCore to AddDbContextCheck
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<ApplicationDbContext>(
-        name: "database",
-        failureStatus: HealthStatus.Degraded,  // Don't fail completely if DB is down
-        tags: new[] { "db", "ready" })
-    .AddCheck("self", () => HealthCheckResult.Healthy("API is running"), tags: new[] { "ready" })
-    .AddCheck("live", () => HealthCheckResult.Healthy("API is alive"), tags: new[] { "live" });
+    .AddDbContextCheck<ApplicationDbContext>();
 
 var app = builder.Build();
 
+// Configure Prometheus metrics BEFORE other middleware
+app.UseRouting();
+app.UseHttpMetrics(); // Adds HTTP request metrics
+
 // Configure the HTTP request pipeline.
-// Enable Swagger in all environments for now (you can restrict later)
-app.UseSwagger();
-app.UseSwaggerUI();
-
-// Health check endpoints
-
-// Simple liveness check - no external dependencies
-app.MapGet("/health/live", () => Results.Ok(new 
-{ 
-    status = "Healthy", 
-    timestamp = DateTime.UtcNow,
-    version = "1.0.0"
-}));
-
-// Readiness check - includes database check but won't fail the endpoint
-app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+if (app.Environment.IsDevelopment())
 {
-    Predicate = check => check.Tags.Contains("ready"),
-    ResponseWriter = async (context, report) =>
-    {
-        context.Response.ContentType = "application/json";
-        // Always return 200 OK, even if some checks are degraded
-        context.Response.StatusCode = 200;
-        
-        var response = new
-        {
-            status = report.Status.ToString(),
-            timestamp = DateTime.UtcNow,
-            checks = report.Entries.Select(x => new
-            {
-                name = x.Key,
-                status = x.Value.Status.ToString(),
-                description = x.Value.Description,
-                duration = x.Value.Duration.TotalMilliseconds
-            }),
-            totalDuration = report.TotalDuration.TotalMilliseconds
-        };
-        await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
-    }
-});
-
-// Main health check - comprehensive but forgiving
-app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
-{
-    ResponseWriter = async (context, report) =>
-    {
-        context.Response.ContentType = "application/json";
-        // Always return 200 OK for main health endpoint
-        context.Response.StatusCode = 200;
-        
-        var response = new
-        {
-            status = report.Status == HealthStatus.Unhealthy ? "Degraded" : report.Status.ToString(),
-            timestamp = DateTime.UtcNow,
-            application = "BudgetForge API",
-            version = "1.0.0",
-            environment = app.Environment.EnvironmentName,
-            checks = report.Entries.Select(x => new
-            {
-                name = x.Key,
-                status = x.Value.Status.ToString(),
-                description = x.Value.Description,
-                duration = x.Value.Duration.TotalMilliseconds
-            }),
-            totalDuration = report.TotalDuration.TotalMilliseconds
-        };
-        await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
-    }
-});
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseHttpsRedirection();
 
-// Map controllers
-app.MapControllers();
+// Add CORS middleware
+app.UseCors("DefaultPolicy");
+
+// Add Authentication and Authorization middleware (ORDER MATTERS!)
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Map controllers and endpoints
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+    endpoints.MapHealthChecks("/health");
+    endpoints.MapMetrics(); // Exposes /metrics endpoint
+});
 
 app.Run();

@@ -88,6 +88,7 @@ services:
       - prometheus_data:/prometheus
     networks:
       - budgetforge-monitoring
+      - budgetforge-backend
     depends_on:
       - api
 
@@ -138,6 +139,53 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+# PostgreSQL Exporter - Exports PostgreSQL metrics to Prometheus
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: budgetforge-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://budgetforge_user:your_secure_password_123@postgres:5432/budgetforge?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - budgetforge-backend
+      - budgetforge-monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Node Exporter - Exports system metrics (CPU, memory, disk)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: budgetforge-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - budgetforge-monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 # Persistent volumes
 volumes:
