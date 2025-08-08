@@ -9,7 +9,7 @@ namespace BudgetForge.Domain.Entities
         public int Id { get; set; }
 
         [Required]
-        public int UserId { get; set; }
+        public int UserId { get; set; } // FK to AppUser (Identity)
 
         [Required]
         [MaxLength(100)]
@@ -22,7 +22,7 @@ namespace BudgetForge.Domain.Entities
         [MaxLength(3)]
         public string Currency { get; set; } = "CAD";
 
-        // This is auto-calculated from transactions, not user-editable directly
+        // Auto-calculated from transactions, not user-editable directly
         [Column(TypeName = "decimal(18,2)")]
         public decimal Balance { get; set; }
 
@@ -31,8 +31,9 @@ namespace BudgetForge.Domain.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation properties
-        public User? User { get; set; }
+        // CHANGED: navigation targets Identity user
+        public AppUser? User { get; set; }
+
         public ICollection<Transaction>? Transactions { get; set; }
     }
 }

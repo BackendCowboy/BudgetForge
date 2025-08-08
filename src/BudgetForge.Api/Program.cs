@@ -10,6 +10,10 @@ using BudgetForge.Application.Interfaces;
 using BudgetForge.Infrastructure.Services;
 using Prometheus;
 
+// 👇 NEW
+using Microsoft.AspNetCore.Identity;
+using BudgetForge.Domain.Entities; // for AppUser
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -23,7 +27,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings"));
 
-// Register JWT Token Service
+// Register JWT Token Service (keep for now; we can remove once AuthController fully uses Identity)
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
 // Register Core Services
@@ -32,6 +36,24 @@ builder.Services.AddScoped<ITransactionService, TransactionService>();
 
 // Register Metrics Service
 builder.Services.AddSingleton<IMetricsService, MetricsService>();
+
+// 👇 NEW: ASP.NET Core Identity (users/roles, password policy, lockout, EF stores)
+builder.Services
+    .AddIdentityCore<AppUser>(o =>
+    {
+        o.User.RequireUniqueEmail = true;
+        o.Password.RequiredLength = 8;
+        o.Password.RequireDigit = true;
+        o.Password.RequireLowercase = true;
+        o.Password.RequireUppercase = true;
+        o.Password.RequireNonAlphanumeric = true;
+        o.Lockout.MaxFailedAccessAttempts = 5;
+        o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
+    })
+    .AddRoles<IdentityRole<int>>()                      // role support
+    .AddEntityFrameworkStores<ApplicationDbContext>()  // persist Identity in our DbContext
+    .AddSignInManager<SignInManager<AppUser>>()        // password/lockout checks
+    .AddDefaultTokenProviders();                       // email/2FA/reset tokens
 
 // Get JWT settings for authentication configuration
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
@@ -52,7 +74,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.SaveToken = jwtSettings.SaveToken;
     options.RequireHttpsMetadata = jwtSettings.RequireHttpsMetadata;
-    
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = jwtSettings.ValidateIssuerSigningKey,
@@ -81,25 +103,25 @@ builder.Services.AddAuthentication(options =>
             context.HandleResponse();
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.ContentType = "application/json";
-            
-            var result = System.Text.Json.JsonSerializer.Serialize(new 
-            { 
+
+            var result = System.Text.Json.JsonSerializer.Serialize(new
+            {
                 error = "You are not authorized",
-                details = context.ErrorDescription 
+                details = context.ErrorDescription
             });
-            
+
             return context.Response.WriteAsync(result);
         },
         OnForbidden = context =>
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             context.Response.ContentType = "application/json";
-            
-            var result = System.Text.Json.JsonSerializer.Serialize(new 
-            { 
-                error = "You do not have permission to access this resource" 
+
+            var result = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                error = "You do not have permission to access this resource"
             });
-            
+
             return context.Response.WriteAsync(result);
         }
     };
@@ -112,11 +134,11 @@ builder.Services.AddAuthorization(options =>
     options.DefaultPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
-        
+
     // Add custom policies
     options.AddPolicy("AdminOnly", policy =>
         policy.RequireRole("Admin"));
-        
+
     options.AddPolicy("UserOrAdmin", policy =>
         policy.RequireRole("User", "Admin"));
 });
@@ -142,6 +164,17 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>();
 
 var app = builder.Build();
+
+// 👇 NEW: Seed Identity roles ("Admin", "User") at startup (replaces EF role seeding)
+using (var scope = app.Services.CreateScope())
+{
+    var roleMgr = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<int>>>();
+    foreach (var r in new[] { "Admin", "User" })
+    {
+        if (!await roleMgr.RoleExistsAsync(r))
+            await roleMgr.CreateAsync(new IdentityRole<int>(r));
+    }
+}
 
 // Configure Prometheus metrics BEFORE other middleware
 app.UseRouting();
