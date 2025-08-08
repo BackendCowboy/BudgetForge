@@ -34,9 +34,9 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=budgetforge;Username=budgetforge_user;Password=your_secure_password_123;Port=5432
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=budgetforge_v2;Username=budgetforge_user;Password=your_secure_password_123;Port=5432
     ports:
-      - "5001:8080"
+      - "18080:8080"
     depends_on:
       postgres:
         condition: service_healthy

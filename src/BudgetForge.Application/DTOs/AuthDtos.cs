@@ -10,6 +10,7 @@ namespace BudgetForge.Application.DTOs
 
         [Required]
         [MinLength(8, ErrorMessage = "Password must be at least 8 characters long")]
+        [DataType(DataType.Password)] // optional, helps tools/UIs
         public string Password { get; set; } = string.Empty;
     }
 
@@ -21,12 +22,17 @@ namespace BudgetForge.Application.DTOs
 
         [Required]
         [MinLength(8, ErrorMessage = "Password must be at least 8 characters long")]
-        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]", 
-            ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character")]
+        // Unified + fully anchored: requires lower, upper, digit, special; length handled by MinLength
+        [RegularExpression(
+            @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).+$",
+            ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+        )]
+        [DataType(DataType.Password)] // optional
         public string Password { get; set; } = string.Empty;
 
         [Required]
         [Compare("Password", ErrorMessage = "Passwords do not match")]
+        [DataType(DataType.Password)] // optional
         public string ConfirmPassword { get; set; } = string.Empty;
 
         [Required]
@@ -70,16 +76,22 @@ namespace BudgetForge.Application.DTOs
     public class ChangePasswordRequest
     {
         [Required]
+        [DataType(DataType.Password)] // optional
         public string CurrentPassword { get; set; } = string.Empty;
 
         [Required]
         [MinLength(8, ErrorMessage = "Password must be at least 8 characters long")]
-        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]", 
-            ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character")]
+        // Unified with RegisterRequest (fully anchored; complexity only—length handled by MinLength)
+        [RegularExpression(
+            @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).+$",
+            ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+        )]
+        [DataType(DataType.Password)] // optional
         public string NewPassword { get; set; } = string.Empty;
 
         [Required]
         [Compare("NewPassword", ErrorMessage = "Passwords do not match")]
+        [DataType(DataType.Password)] // optional
         public string ConfirmNewPassword { get; set; } = string.Empty;
     }
 

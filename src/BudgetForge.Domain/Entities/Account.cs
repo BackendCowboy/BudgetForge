@@ -31,8 +31,7 @@ namespace BudgetForge.Domain.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation properties
-        public User? User { get; set; }
+        // Navigation properties (Domain stays ignorant of Identity/AppUser)
         public ICollection<Transaction>? Transactions { get; set; }
     }
 }

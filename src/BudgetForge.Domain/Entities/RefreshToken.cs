@@ -18,10 +18,9 @@ namespace BudgetForge.Domain.Entities
         public string? ReplacedByToken { get; set; }
         public string? RevokedByIp { get; set; }
         public string? CreatedByIp { get; set; }
-        
-        // Navigation properties
-        public virtual User User { get; set; } = null!;
-        
+
+        // No direct AppUser navigation in Domain
+
         // Computed properties - calculated, not stored in database
         public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
         public bool IsActive => !IsRevoked && !IsExpired;
