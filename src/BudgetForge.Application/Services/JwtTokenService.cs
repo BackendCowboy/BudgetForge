@@ -32,8 +32,11 @@ namespace BudgetForge.Application.Services
         {
             var claims = new List<Claim>
             {
+                // Use both for compatibility - ClaimTypes.NameIdentifier for controller access
+                new(ClaimTypes.NameIdentifier, userId.ToString()),
                 new(JwtRegisteredClaimNames.Sub, userId.ToString()),
                 new(JwtRegisteredClaimNames.Email, email),
+                new(ClaimTypes.Email, email),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
             };
@@ -129,7 +132,11 @@ namespace BudgetForge.Application.Services
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
                 var jwtToken = tokenHandler.ReadJwtToken(token);
-                var userIdClaim = jwtToken.Claims.FirstOrDefault(x => x.Type == JwtRegisteredClaimNames.Sub);
+                
+                // Try both claim types for compatibility
+                var userIdClaim = jwtToken.Claims.FirstOrDefault(x => 
+                    x.Type == ClaimTypes.NameIdentifier || 
+                    x.Type == JwtRegisteredClaimNames.Sub);
                 
                 if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
                 {

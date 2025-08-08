@@ -32,7 +32,11 @@ namespace BudgetForge.Domain.Entities
         public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
         public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 
-        // Computed property - combines first and last name
+        // Navigation properties for budgeting
+        public virtual ICollection<Account> Accounts { get; set; } = new List<Account>();
+        public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
+
+     // Computed property - combines first and last name
         public string FullName => $"{FirstName} {LastName}".Trim();
 
         // Constructor - runs when you create a new User

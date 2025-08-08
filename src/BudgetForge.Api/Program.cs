@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 using BudgetForge.Application.Models;
 using BudgetForge.Application.Services;
 using BudgetForge.Infrastructure.Data;
+using BudgetForge.Application.Interfaces;
+using BudgetForge.Infrastructure.Services;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +25,10 @@ builder.Services.Configure<JwtSettings>(
 
 // Register JWT Token Service
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// Register Core Services
+builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<ITransactionService, TransactionService>();
 
 // Register Metrics Service
 builder.Services.AddSingleton<IMetricsService, MetricsService>();

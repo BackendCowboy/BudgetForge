@@ -14,6 +14,8 @@ namespace BudgetForge.Infrastructure.Data
         public DbSet<Role> Roles { get; set; } = null!;
         public DbSet<UserRole> UserRoles { get; set; } = null!;
         public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+        public DbSet<Account> Accounts { get; set; } = null!;
+        public DbSet<Transaction> Transactions { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -146,11 +148,93 @@ namespace BudgetForge.Infrastructure.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
+            // Configure Account entity
+            modelBuilder.Entity<Account>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                entity.Property(e => e.Name)
+                    .IsRequired()
+                    .HasMaxLength(100);
+                
+                entity.Property(e => e.Balance)
+                    .HasPrecision(18, 2)
+                    .IsRequired();
+                
+                entity.Property(e => e.Currency)
+                    .HasMaxLength(3)
+                    .HasDefaultValue("CAD");
+                
+                // Store enum as string for readability
+                entity.Property(e => e.Type)
+                    .HasConversion<string>()
+                    .HasMaxLength(20)
+                    .IsRequired();
+                
+                entity.Property(e => e.CreatedAt)
+                    .IsRequired();
+                
+                entity.Property(e => e.UpdatedAt)
+                    .IsRequired();
+                
+                // Create indexes for performance
+                entity.HasIndex(e => new { e.UserId, e.IsDeleted });
+                
+                // Configure relationship with User
+                entity.HasOne(a => a.User)
+                    .WithMany(u => u.Accounts)
+                    .HasForeignKey(a => a.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                // Configure relationship with Transactions
+                entity.HasMany(a => a.Transactions)
+                    .WithOne(t => t.Account)
+                    .HasForeignKey(t => t.AccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Configure Transaction entity
+            modelBuilder.Entity<Transaction>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                entity.Property(e => e.Amount)
+                    .HasPrecision(18, 2)
+                    .IsRequired();
+                
+                entity.Property(e => e.Description)
+                    .IsRequired()
+                    .HasMaxLength(200);
+                
+                // Store enum as string for readability
+                entity.Property(e => e.Type)
+                    .HasConversion<string>()
+                    .HasMaxLength(20)
+                    .IsRequired();
+                
+                entity.Property(e => e.Date)
+                    .IsRequired();
+                
+                entity.Property(e => e.CreatedAt)
+                    .IsRequired();
+                
+                entity.Property(e => e.UpdatedAt)
+                    .IsRequired();
+                
+                // Create indexes for performance
+                entity.HasIndex(e => new { e.AccountId, e.Date });
+                entity.HasIndex(e => new { e.AccountId, e.IsDeleted });
+                
+                // Relationship is configured from Account side
+            });
+
             // Seed initial roles
+            var seedDate = new DateTime(2025, 8, 7, 0, 0, 0, DateTimeKind.Utc);
+
             modelBuilder.Entity<Role>().HasData(
-                new Role { Id = 1, Name = "Admin", Description = "Administrator with full access", CreatedAt = DateTime.UtcNow },
-                new Role { Id = 2, Name = "User", Description = "Standard user with basic access", CreatedAt = DateTime.UtcNow }
-            );
+                new Role { Id = 1, Name = "Admin", Description = "Administrator with full access", CreatedAt = seedDate },
+                new Role { Id = 2, Name = "User", Description = "Standard user with basic access", CreatedAt = seedDate }
+            ); 
         }
     }
 }
