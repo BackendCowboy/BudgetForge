@@ -1,43 +1,44 @@
 using System.Text;
+using System.Text.Json;                       // NEW: for JSON health writer
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using BudgetForge.Application.Models;
-using BudgetForge.Application.Services;
-using BudgetForge.Infrastructure.Data;
-using BudgetForge.Application.Interfaces;
-using BudgetForge.Infrastructure.Services;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks; // NEW: HealthCheckOptions
 using Prometheus;
 
-// 👇 NEW
-using Microsoft.AspNetCore.Identity;
-using BudgetForge.Domain.Entities; // for AppUser
+using BudgetForge.Application.Models;
+using BudgetForge.Application.Services;
+using BudgetForge.Application.Interfaces;
+using BudgetForge.Infrastructure.Data;
+using BudgetForge.Infrastructure.Services;
+using BudgetForge.Infrastructure.Identity; // AppUser
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
 
-// Configure Entity Framework
+// EF Core (PostgreSQL)
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Configure JWT Settings
+// JWT Settings
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings"));
 
-// Register JWT Token Service (keep for now; we can remove once AuthController fully uses Identity)
+// JWT Token Service (keep for now; can remove once AuthController fully uses Identity)
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
-// Register Core Services
+// Core Services
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
-// Register Metrics Service
+// Metrics Service
 builder.Services.AddSingleton<IMetricsService, MetricsService>();
 
-// 👇 NEW: ASP.NET Core Identity (users/roles, password policy, lockout, EF stores)
+// ASP.NET Core Identity (users/roles) + EF store
 builder.Services
     .AddIdentityCore<AppUser>(o =>
     {
@@ -50,20 +51,17 @@ builder.Services
         o.Lockout.MaxFailedAccessAttempts = 5;
         o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
     })
-    .AddRoles<IdentityRole<int>>()                      // role support
-    .AddEntityFrameworkStores<ApplicationDbContext>()  // persist Identity in our DbContext
-    .AddSignInManager<SignInManager<AppUser>>()        // password/lockout checks
+    .AddRoles<IdentityRole<int>>()                     // role support
+    .AddEntityFrameworkStores<ApplicationDbContext>() // persist Identity in our DbContext
+    .AddSignInManager()                                // password/lockout checks
     .AddDefaultTokenProviders();                       // email/2FA/reset tokens
 
 // Get JWT settings for authentication configuration
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
-
 if (jwtSettings == null || string.IsNullOrEmpty(jwtSettings.SecretKey))
-{
     throw new InvalidOperationException("JWT settings are not properly configured");
-}
 
-// Configure Authentication
+// Authentication
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -87,15 +85,12 @@ builder.Services.AddAuthentication(options =>
         ClockSkew = TimeSpan.FromSeconds(jwtSettings.ClockSkewSeconds)
     };
 
-    // Configure JWT events for better error handling
     options.Events = new JwtBearerEvents
     {
         OnAuthenticationFailed = context =>
         {
-            if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
-            {
+            if (context.Exception is SecurityTokenExpiredException)
                 context.Response.Headers.Append("Token-Expired", "true");
-            }
             return Task.CompletedTask;
         },
         OnChallenge = context =>
@@ -103,84 +98,75 @@ builder.Services.AddAuthentication(options =>
             context.HandleResponse();
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.ContentType = "application/json";
-
-            var result = System.Text.Json.JsonSerializer.Serialize(new
+            var result = JsonSerializer.Serialize(new
             {
                 error = "You are not authorized",
                 details = context.ErrorDescription
             });
-
             return context.Response.WriteAsync(result);
         },
         OnForbidden = context =>
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             context.Response.ContentType = "application/json";
-
-            var result = System.Text.Json.JsonSerializer.Serialize(new
+            var result = JsonSerializer.Serialize(new
             {
                 error = "You do not have permission to access this resource"
             });
-
             return context.Response.WriteAsync(result);
         }
     };
 });
 
-// Configure Authorization
+// Authorization
 builder.Services.AddAuthorization(options =>
 {
-    // Add default policy
     options.DefaultPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
 
-    // Add custom policies
-    options.AddPolicy("AdminOnly", policy =>
-        policy.RequireRole("Admin"));
-
-    options.AddPolicy("UserOrAdmin", policy =>
-        policy.RequireRole("User", "Admin"));
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("UserOrAdmin", policy => policy.RequireRole("User", "Admin"));
 });
 
-// Configure CORS (adjust origins as needed for your frontend)
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3001") // Add your frontend URLs
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3001")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
 });
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+// Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Add Health Checks - FIXED: Changed AddEntityFrameworkCore to AddDbContextCheck
+// ---------- Health checks (CHANGED) ----------
+var connString = builder.Configuration.GetConnectionString("DefaultConnection"); // NEW: reuse once
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<ApplicationDbContext>();
+    .AddDbContextCheck<ApplicationDbContext>(name: "ef-dbcontext")
+    .AddNpgSql(connString!, name: "npgsql-connection"); // NEW: explicit connection test
+// -------------------------------------------
 
 var app = builder.Build();
 
-// 👇 NEW: Seed Identity roles ("Admin", "User") at startup (replaces EF role seeding)
+// Seed Identity roles ("Admin", "User") at startup
 using (var scope = app.Services.CreateScope())
 {
     var roleMgr = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<int>>>();
     foreach (var r in new[] { "Admin", "User" })
-    {
         if (!await roleMgr.RoleExistsAsync(r))
             await roleMgr.CreateAsync(new IdentityRole<int>(r));
-    }
 }
 
-// Configure Prometheus metrics BEFORE other middleware
-app.UseRouting();
-app.UseHttpMetrics(); // Adds HTTP request metrics
+// Prometheus metrics BEFORE other middleware
+app.UseHttpMetrics();
 
-// Configure the HTTP request pipeline.
+// HTTP pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -188,20 +174,38 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// Add CORS middleware
 app.UseCors("DefaultPolicy");
-
-// Add Authentication and Authorization middleware (ORDER MATTERS!)
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map controllers and endpoints
-app.UseEndpoints(endpoints =>
+// ---------- Endpoint mapping (CHANGED: verbose /health) ----------
+app.MapControllers();
+
+app.MapHealthChecks("/health", new HealthCheckOptions
 {
-    endpoints.MapControllers();
-    endpoints.MapHealthChecks("/health");
-    endpoints.MapMetrics(); // Exposes /metrics endpoint
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            results = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                error = e.Value.Exception?.Message,
+                data = e.Value.Data
+            })
+        };
+        await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
+    }
 });
 
+app.MapMetrics();
+// ---------------------------------------------------------------
+// TEMP: comment this out for now (it can cause weird redirects in containers)
+// app.UseHttpsRedirection();
+
+// sanity endpoint
+app.MapGet("/ping", () => Results.Text("pong", "text/plain"));
 app.Run();

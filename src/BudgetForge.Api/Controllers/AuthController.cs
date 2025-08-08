@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-
+using BudgetForge.Infrastructure.Identity; // <-- gives you AppUser
 using BudgetForge.Infrastructure.Data;
 using BudgetForge.Application.Services;
 using BudgetForge.Application.DTOs;

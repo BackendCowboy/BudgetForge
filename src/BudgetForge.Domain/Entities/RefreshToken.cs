@@ -4,15 +4,13 @@ namespace BudgetForge.Domain.Entities
 {
     /// <summary>
     /// Represents a refresh token for JWT authentication
+    /// Refresh tokens allow users to stay logged in without re-entering credentials
     /// </summary>
     public class RefreshToken
     {
         public int Id { get; set; }
         public string Token { get; set; } = string.Empty;
-
-        // FK to AppUser (Identity)
         public int UserId { get; set; }
-
         public DateTime ExpiresAt { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public bool IsRevoked { get; set; } = false;
@@ -21,10 +19,9 @@ namespace BudgetForge.Domain.Entities
         public string? RevokedByIp { get; set; }
         public string? CreatedByIp { get; set; }
 
-        // CHANGED: navigation targets Identity user
-        public virtual AppUser User { get; set; } = null!;
+        // No direct AppUser navigation in Domain
 
-        // Computed properties - not stored in database
+        // Computed properties - calculated, not stored in database
         public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
         public bool IsActive => !IsRevoked && !IsExpired;
 
