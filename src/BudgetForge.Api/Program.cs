@@ -1,32 +1,120 @@
 using System.Text;
-using System.Text.Json;                       // NEW: for JSON health writer
+using System.Text.Json;                       // JSON health writer
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks; // NEW: HealthCheckOptions
+using Microsoft.AspNetCore.Diagnostics.HealthChecks; // HealthCheckOptions
+using Microsoft.OpenApi.Models;               // Swagger security types
 using Prometheus;
 
+using DotNetEnv;                              // .env loader
+using System.Text.RegularExpressions;
+using Npgsql;                                 // NpgsqlConnectionStringBuilder
+
+using BudgetForge.Application.Mapping;
 using BudgetForge.Application.Models;
 using BudgetForge.Application.Services;
 using BudgetForge.Application.Interfaces;
 using BudgetForge.Infrastructure.Data;
 using BudgetForge.Infrastructure.Services;
-using BudgetForge.Infrastructure.Identity; // AppUser
+using BudgetForge.Infrastructure.Identity;     // AppUser
+
+using FluentValidation;
+using FluentValidation.AspNetCore;
+using BudgetForge.Application.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---------------------------------------------------------
+// Load .env explicitly from the repo root (dotnet watch runs
+// with content root at src/BudgetForge.Api, so default Env.Load()
+// may not find the file at the solution root).
+// ---------------------------------------------------------
+var contentRoot = builder.Environment.ContentRootPath;               // .../src/BudgetForge.Api
+var solutionRoot = Path.GetFullPath(Path.Combine(contentRoot, "..", ".."));
+Env.Load(Path.Combine(solutionRoot, ".env"));
+
+// (Optional) Keep your placeholder expansion logic if you want to support ${VAR} in appsettings.json.
+// Not required anymore for DB/JWT because we read env directly below.
+var entries = builder.Configuration.AsEnumerable().ToList();
+foreach (var kv in entries)
+{
+    if (kv.Value is null) continue;
+    var expanded = Regex.Replace(kv.Value, @"\$\{([A-Z0-9_]+)\}",
+        m => Environment.GetEnvironmentVariable(m.Groups[1].Value) ?? m.Value,
+        RegexOptions.IgnoreCase);
+    if (!ReferenceEquals(expanded, kv.Value))
+        builder.Configuration[kv.Key] = expanded;
+}
+
+// ---------------------------------------------------------
+// Helper: build the Postgres connection string from env vars
+// (fallback to appsettings if env missing). This avoids ${...}
+// parsing issues and ensures Port is a valid int.
+// ---------------------------------------------------------
+string BuildConnectionString()
+{
+    var host = Environment.GetEnvironmentVariable("DB_HOST");
+    var db   = Environment.GetEnvironmentVariable("DB_NAME");
+    var user = Environment.GetEnvironmentVariable("DB_USER");
+    var pass = Environment.GetEnvironmentVariable("DB_PASS");
+    var portVar = Environment.GetEnvironmentVariable("DB_PORT");
+
+    if (!string.IsNullOrWhiteSpace(host) &&
+        !string.IsNullOrWhiteSpace(db)   &&
+        !string.IsNullOrWhiteSpace(user) &&
+        !string.IsNullOrWhiteSpace(pass) &&
+        !string.IsNullOrWhiteSpace(portVar) &&
+        int.TryParse(portVar, out var port))
+    {
+        var csb = new NpgsqlConnectionStringBuilder
+        {
+            Host = host,
+            Database = db,
+            Username = user,
+            Password = pass,
+            Port = port
+        };
+        return csb.ToString();
+    }
+
+    // Fallback to whatever is in appsettings.json
+    return builder.Configuration.GetConnectionString("DefaultConnection")
+           ?? throw new InvalidOperationException("No connection string configured.");
+}
+
+var builtConnString = BuildConnectionString(); // reuse in EF + health checks
 
 // Add services to the container.
 builder.Services.AddControllers();
 
-// EF Core (PostgreSQL)
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Mapping Profile 
+builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
 
-// JWT Settings
+// Register FluentValidation
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateTransactionRequestValidator>();
+
+// EF Core (PostgreSQL) — use the built connection string
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builtConnString));
+
+// JWT Settings (bind from config, then override from env if present)
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings"));
+
+var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
+    ?? throw new InvalidOperationException("JWT settings are not properly configured");
+
+// Override from env if provided (best practice for secrets)
+jwtSettings.SecretKey = Environment.GetEnvironmentVariable("JWT_SECRET")   ?? jwtSettings.SecretKey;
+jwtSettings.Issuer    = Environment.GetEnvironmentVariable("JWT_ISSUER")   ?? jwtSettings.Issuer;
+jwtSettings.Audience  = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? jwtSettings.Audience;
+
+if (string.IsNullOrWhiteSpace(jwtSettings.SecretKey))
+    throw new InvalidOperationException("JWT SecretKey is missing.");
 
 // JWT Token Service (keep for now; can remove once AuthController fully uses Identity)
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
@@ -55,11 +143,6 @@ builder.Services
     .AddEntityFrameworkStores<ApplicationDbContext>() // persist Identity in our DbContext
     .AddSignInManager()                                // password/lockout checks
     .AddDefaultTokenProviders();                       // email/2FA/reset tokens
-
-// Get JWT settings for authentication configuration
-var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
-if (jwtSettings == null || string.IsNullOrEmpty(jwtSettings.SecretKey))
-    throw new InvalidOperationException("JWT settings are not properly configured");
 
 // Authentication
 builder.Services.AddAuthentication(options =>
@@ -134,23 +217,46 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3001")
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3001") // add http://localhost:4200 later for Angular
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
 });
 
-// Swagger
+// Swagger (with JWT Bearer auth so the Authorize button works)
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "BudgetForge API", Version = "v1" });
 
-// ---------- Health checks (CHANGED) ----------
-var connString = builder.Configuration.GetConnectionString("DefaultConnection"); // NEW: reuse once
+    var scheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "Enter 'Bearer' [space] then your JWT",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        Reference = new OpenApiReference
+        {
+            Type = ReferenceType.SecurityScheme,
+            Id = "Bearer"
+        }
+    };
+
+    c.AddSecurityDefinition("Bearer", scheme);
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        { scheme, Array.Empty<string>() }
+    });
+});
+
+// ---------- Health checks (use the same built connection) ----------
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>(name: "ef-dbcontext")
-    .AddNpgSql(connString!, name: "npgsql-connection"); // NEW: explicit connection test
-// -------------------------------------------
+    .AddNpgSql(builtConnString, name: "npgsql-connection");
+// -------------------------------------------------------------------
 
 var app = builder.Build();
 
@@ -178,7 +284,7 @@ app.UseCors("DefaultPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// ---------- Endpoint mapping (CHANGED: verbose /health) ----------
+// Endpoint mapping
 app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
@@ -202,9 +308,6 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 });
 
 app.MapMetrics();
-// ---------------------------------------------------------------
-// TEMP: comment this out for now (it can cause weird redirects in containers)
-// app.UseHttpsRedirection();
 
 // sanity endpoint
 app.MapGet("/ping", () => Results.Text("pong", "text/plain"));
