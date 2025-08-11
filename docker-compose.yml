@@ -82,7 +82,7 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
     ports:
-      - "9090:9090"
+      - "19090:9090"
     volumes:
       - ./docker/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -146,7 +146,7 @@ services:
     container_name: budgetforge-postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://budgetforge_user:your_secure_password_123@postgres:5432/budgetforge?sslmode=disable"
+     DATA_SOURCE_NAME: "postgresql://budgetforge_user:your_secure_password_123@postgres:5432/budgetforge_v2?sslmode=disable"
     ports:
       - "9187:9187"
     depends_on:
