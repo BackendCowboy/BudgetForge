@@ -21,7 +21,7 @@ namespace BudgetForge.Infrastructure.Services
             {
                 UserId = userId,
                 Name = request.Name,
-                Type = request.Type, // Now using AccountType enum directly
+                Type = request.Type,
                 Balance = request.InitialBalance,
                 Currency = request.Currency,
                 CreatedAt = DateTime.UtcNow,
@@ -36,7 +36,7 @@ namespace BudgetForge.Infrastructure.Services
             {
                 Id = account.Id,
                 Name = account.Name,
-                Type = account.Type, // Now using AccountType enum directly
+                Type = account.Type,
                 Balance = account.Balance,
                 Currency = account.Currency,
                 IsDeleted = account.IsDeleted,
@@ -53,7 +53,7 @@ namespace BudgetForge.Infrastructure.Services
                 {
                     Id = a.Id,
                     Name = a.Name,
-                    Type = a.Type, // Now using AccountType enum directly
+                    Type = a.Type,
                     Balance = a.Balance,
                     Currency = a.Currency,
                     IsDeleted = a.IsDeleted,
@@ -74,7 +74,7 @@ namespace BudgetForge.Infrastructure.Services
             {
                 Id = account.Id,
                 Name = account.Name,
-                Type = account.Type, // Now using AccountType enum directly
+                Type = account.Type,
                 Balance = account.Balance,
                 Currency = account.Currency,
                 IsDeleted = account.IsDeleted,
@@ -90,8 +90,10 @@ namespace BudgetForge.Infrastructure.Services
 
             if (account == null) return false;
 
-            account.Name = request.Name;
-            account.Type = request.Type;
+            if (request.Name is not null) account.Name = request.Name;
+            if (request.Type.HasValue)    account.Type = request.Type.Value;
+            if (request.Currency is not null) account.Currency = request.Currency;
+
             account.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

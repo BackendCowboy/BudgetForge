@@ -3,141 +3,120 @@ using BudgetForge.Application.Interfaces;
 using BudgetForge.Domain.Entities;
 using BudgetForge.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using AutoMapper;
 
 namespace BudgetForge.Infrastructure.Services
 {
     public class TransactionService : ITransactionService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IMapper _mapper;
 
-        public TransactionService(ApplicationDbContext context)
+        public TransactionService(ApplicationDbContext context, IMapper mapper)
         {
             _context = context;
+            _mapper = mapper;
+        }
+
+        private static decimal SignedAmount(TransactionType type, decimal amount)
+        {
+            var abs = Math.Abs(amount);
+            return type == TransactionType.Expense ? -abs : abs;
         }
 
         public async Task<TransactionResponse> CreateTransactionAsync(int userId, CreateTransactionRequest request)
         {
-            // First verify the account belongs to the user
+            // Verify account ownership
             var account = await _context.Accounts
                 .FirstOrDefaultAsync(a => a.Id == request.AccountId && a.UserId == userId && !a.IsDeleted);
-            
-            if (account == null)
-            {
-                throw new UnauthorizedAccessException("Account not found or doesn't belong to user");
-            }
 
-            var transaction = new Transaction
+            if (account == null)
+                throw new UnauthorizedAccessException("Account not found or not owned by user.");
+
+            var tx = new Transaction
             {
                 AccountId = request.AccountId,
+                // no UserId here, we use Account.UserId for ownership
                 Type = request.Type,
-                Description = request.Description,
+                Description = request.Description ?? string.Empty,
                 Amount = request.Amount,
-                Date = request.Date ?? DateTime.UtcNow,
+                Date = request.Timestamp ?? DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 IsDeleted = false
             };
 
-            _context.Transactions.Add(transaction);
-            
-            // Update account balance based on transaction type
-            if (transaction.Type == TransactionType.Income)
-            {
-                account.Balance += transaction.Amount;
-            }
-            else if (transaction.Type == TransactionType.Expense)
-            {
-                account.Balance -= transaction.Amount;
-            }
-            
+            account.Balance += SignedAmount(tx.Type, tx.Amount);
             account.UpdatedAt = DateTime.UtcNow;
-            
+
+            _context.Transactions.Add(tx);
             await _context.SaveChangesAsync();
 
-            return MapToResponse(transaction);
+            return _mapper.Map<TransactionResponse>(tx);
         }
 
         public async Task<IEnumerable<TransactionResponse>> GetTransactionsAsync(int userId)
         {
-            var transactions = await _context.Transactions
+            var list = await _context.Transactions
                 .Include(t => t.Account)
                 .Where(t => t.Account!.UserId == userId && !t.IsDeleted)
                 .OrderByDescending(t => t.Date)
                 .ToListAsync();
 
-            return transactions.Select(MapToResponse);
+            return _mapper.Map<List<TransactionResponse>>(list);
         }
 
         public async Task<TransactionResponse?> GetTransactionByIdAsync(int userId, int transactionId)
         {
-            var transaction = await _context.Transactions
+            var tx = await _context.Transactions
                 .Include(t => t.Account)
-                .FirstOrDefaultAsync(t => t.Id == transactionId && 
-                                          t.Account!.UserId == userId && 
+                .FirstOrDefaultAsync(t => t.Id == transactionId &&
+                                          t.Account!.UserId == userId &&
                                           !t.IsDeleted);
 
-            return transaction != null ? MapToResponse(transaction) : null;
+            return tx != null ? _mapper.Map<TransactionResponse>(tx) : null;
         }
 
         public async Task<IEnumerable<TransactionResponse>> GetTransactionsByAccountAsync(int userId, int accountId)
         {
-            // Verify account belongs to user first
-            var accountExists = await _context.Accounts
+            var exists = await _context.Accounts
                 .AnyAsync(a => a.Id == accountId && a.UserId == userId && !a.IsDeleted);
-            
-            if (!accountExists)
-            {
-                return Enumerable.Empty<TransactionResponse>();
-            }
 
-            var transactions = await _context.Transactions
+            if (!exists) return Enumerable.Empty<TransactionResponse>();
+
+            var list = await _context.Transactions
                 .Where(t => t.AccountId == accountId && !t.IsDeleted)
                 .OrderByDescending(t => t.Date)
                 .ToListAsync();
 
-            return transactions.Select(MapToResponse);
+            return _mapper.Map<List<TransactionResponse>>(list);
         }
 
         public async Task<bool> UpdateTransactionAsync(int userId, int transactionId, UpdateTransactionRequest request)
         {
-            var transaction = await _context.Transactions
+            var tx = await _context.Transactions
                 .Include(t => t.Account)
-                .FirstOrDefaultAsync(t => t.Id == transactionId && 
-                                          t.Account!.UserId == userId && 
+                .FirstOrDefaultAsync(t => t.Id == transactionId &&
+                                          t.Account!.UserId == userId &&
                                           !t.IsDeleted);
 
-            if (transaction == null)
-                return false;
+            if (tx == null) return false;
 
-            var account = transaction.Account!;
-            
-            // Reverse the old transaction's effect on balance
-            if (transaction.Type == TransactionType.Income)
-            {
-                account.Balance -= transaction.Amount;
-            }
-            else if (transaction.Type == TransactionType.Expense)
-            {
-                account.Balance += transaction.Amount;
-            }
+            var account = tx.Account!;
 
-            // Update transaction
-            transaction.Type = request.Type;
-            transaction.Description = request.Description;
-            transaction.Amount = request.Amount;
-            transaction.Date = request.Date;
-            transaction.UpdatedAt = DateTime.UtcNow;
+            // Reverse old effect
+            account.Balance -= SignedAmount(tx.Type, tx.Amount);
 
-            // Apply the new transaction's effect on balance
-            if (transaction.Type == TransactionType.Income)
-            {
-                account.Balance += transaction.Amount;
-            }
-            else if (transaction.Type == TransactionType.Expense)
-            {
-                account.Balance -= transaction.Amount;
-            }
-            
+            // Apply partial updates
+            if (request.Type.HasValue)          tx.Type = request.Type.Value;
+            if (request.Amount.HasValue)        tx.Amount = request.Amount.Value;
+            if (request.Description is not null) tx.Description = request.Description;
+            if (request.Timestamp.HasValue)     tx.Date = request.Timestamp.Value;
+
+            tx.UpdatedAt = DateTime.UtcNow;
+
+            // Apply new effect
+            account.Balance += SignedAmount(tx.Type, tx.Amount);
             account.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -146,48 +125,27 @@ namespace BudgetForge.Infrastructure.Services
 
         public async Task<bool> DeleteTransactionAsync(int userId, int transactionId)
         {
-            var transaction = await _context.Transactions
+            // Soft delete + reverse effect
+            var tx = await _context.Transactions
                 .Include(t => t.Account)
-                .FirstOrDefaultAsync(t => t.Id == transactionId && 
-                                          t.Account!.UserId == userId && 
+                .FirstOrDefaultAsync(t => t.Id == transactionId &&
+                                          t.Account!.UserId == userId &&
                                           !t.IsDeleted);
 
-            if (transaction == null)
-                return false;
+            if (tx == null) return false;
 
-            var account = transaction.Account!;
-            
-            // Reverse the transaction's effect on balance
-            if (transaction.Type == TransactionType.Income)
-            {
-                account.Balance -= transaction.Amount;
-            }
-            else if (transaction.Type == TransactionType.Expense)
-            {
-                account.Balance += transaction.Amount;
-            }
+            var account = tx.Account!;
 
-            transaction.IsDeleted = true;
-            transaction.UpdatedAt = DateTime.UtcNow;
+            account.Balance -= SignedAmount(tx.Type, tx.Amount);
+
+            tx.IsDeleted = true;
+            tx.UpdatedAt = DateTime.UtcNow;
             account.UpdatedAt = DateTime.UtcNow;
-            
+
             await _context.SaveChangesAsync();
             return true;
         }
 
-        private TransactionResponse MapToResponse(Transaction transaction)
-        {
-            return new TransactionResponse
-            {
-                Id = transaction.Id,
-                AccountId = transaction.AccountId,
-                Type = transaction.Type,
-                Description = transaction.Description,
-                Amount = transaction.Amount,
-                Date = transaction.Date,
-                CreatedAt = transaction.CreatedAt,
-                UpdatedAt = transaction.UpdatedAt
-            };
-        }
+    
     }
 }

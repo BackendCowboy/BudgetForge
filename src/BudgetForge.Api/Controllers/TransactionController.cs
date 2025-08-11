@@ -147,11 +147,11 @@ namespace BudgetForge.Api.Controllers
             // Filter by date range if provided
             if (startDate.HasValue)
             {
-                transactions = transactions.Where(t => t.Date >= startDate.Value);
+                transactions = transactions.Where(t => t.Timestamp >= startDate.Value);
             }
             if (endDate.HasValue)
             {
-                transactions = transactions.Where(t => t.Date <= endDate.Value);
+                transactions = transactions.Where(t => t.Timestamp <= endDate.Value);
             }
             
             var transactionsList = transactions.ToList();
@@ -198,8 +198,8 @@ namespace BudgetForge.Api.Controllers
             var transactions = await _transactionService.GetTransactionsAsync(userId);
             
             var filteredTransactions = transactions
-                .Where(t => t.Date >= startDate && t.Date <= endDate)
-                .OrderByDescending(t => t.Date);
+                .Where(t => t.Timestamp >= startDate && t.Timestamp <= endDate)
+                .OrderByDescending(t => t.Timestamp);
             
             return Ok(filteredTransactions);
         }
