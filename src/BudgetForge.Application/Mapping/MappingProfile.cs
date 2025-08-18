@@ -1,4 +1,3 @@
-using System.Runtime;
 using AutoMapper;
 using BudgetForge.Application.DTOs;
 using BudgetForge.Domain.Entities;
@@ -9,8 +8,12 @@ namespace BudgetForge.Application.Mapping
     {
         public MappingProfile()
         {
+            // If you map Accounts:
             CreateMap<Account, AccountResponse>();
-            CreateMap<Transaction, TransactionResponse>();
+
+            // Map entity.Date -> dto.Timestamp
+            CreateMap<Transaction, TransactionResponse>()
+                .ForMember(d => d.Timestamp, o => o.MapFrom(s => s.Date));
         }
     }
 }

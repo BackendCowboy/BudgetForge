@@ -6,18 +6,36 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
+  confirmPassword: string;
   firstName: string;
   lastName: string;
 }
 
 export interface AuthResponse {
-  token: string;
-  user: User;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiry: Date;
+  refreshTokenExpiry: Date;
+  user: UserInfo;
 }
 
-export interface User {
-  id: string;
+export interface UserInfo {
+  id: number;  // int in C#, not string
   email: string;
   firstName: string;
   lastName: string;
+  fullName: string;
+  roles: string[];
+  lastLoginAt?: Date;
+}
+
+export interface RefreshTokenRequest {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
 }

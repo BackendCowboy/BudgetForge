@@ -3,7 +3,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 using BudgetForge.Domain.Entities;
-using BudgetForge.Infrastructure.Identity; // <-- AppUser lives here
+using BudgetForge.Infrastructure.Identity;
+
+using BudgetForge.Domain.Entities.Billing; 
+
+
 
 namespace BudgetForge.Infrastructure.Data
 {
@@ -18,6 +22,8 @@ namespace BudgetForge.Infrastructure.Data
         public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
         public DbSet<Account> Accounts { get; set; } = null!;
         public DbSet<Transaction> Transactions { get; set; } = null!;
+        public DbSet<Bill> Bills { get; set; } = null!;
+        public DbSet<BillPayment> BillPayments { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -97,6 +103,8 @@ namespace BudgetForge.Infrastructure.Data
                 entity.HasIndex(e => new { e.AccountId, e.Date });
                 entity.HasIndex(e => new { e.AccountId, e.IsDeleted });
             });
+
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
             // No EF seeding for roles here. Create "Admin"/"User" at startup via RoleManager.
         }

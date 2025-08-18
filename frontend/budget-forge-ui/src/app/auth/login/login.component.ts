@@ -6,8 +6,9 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { CommonModule } from '@angular/common';
+import { AuthService } from "../../core/services/auth.service";
+import { AuthResponse, LoginRequest } from "../../core/models/auth.models";
 
-import { AuthService, AuthResponse, LoginRequest } from '../../core/services/auth.service';
 
 
 

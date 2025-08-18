@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using BudgetForge.Infrastructure.Identity; // <-- gives you AppUser
 using BudgetForge.Infrastructure.Data;
-using BudgetForge.Application.Services;
+using BudgetForge.Application.Interfaces;
 using BudgetForge.Application.DTOs;
 using BudgetForge.Domain.Entities;
 

@@ -1,0 +1,38 @@
+.
+├── angular.json
+├── angular.json.backup
+├── folder-structure.txt
+├── package-lock.json
+├── package.json
+├── public
+│   └── favicon.ico
+├── README.md
+├── src
+│   ├── app
+│   │   ├── accounts
+│   │   ├── app.config.server.ts
+│   │   ├── app.config.ts
+│   │   ├── app.html
+│   │   ├── app.routes.server.ts
+│   │   ├── app.routes.ts
+│   │   ├── app.scss
+│   │   ├── app.spec.ts
+│   │   ├── app.ts
+│   │   ├── auth
+│   │   ├── core
+│   │   ├── dashboard
+│   │   ├── shared
+│   │   └── transactions
+│   ├── environments
+│   │   ├── environment.prod.ts
+│   │   └── environment.ts
+│   ├── index.html
+│   ├── main.server.ts
+│   ├── main.ts
+│   ├── server.ts
+│   └── styles.scss
+├── tsconfig.app.json
+├── tsconfig.json
+└── tsconfig.spec.json
+
+11 directories, 25 files

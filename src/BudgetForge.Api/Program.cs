@@ -1,58 +1,60 @@
 using System.Text;
-using System.Text.Json;                       // JSON health writer
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks; // HealthCheckOptions
-using Microsoft.OpenApi.Models;               // Swagger security types
+using Microsoft.OpenApi.Models;
 using Prometheus;
+using DotNetEnv;
+using Npgsql;
 
-using DotNetEnv;                              // .env loader
-using System.Text.RegularExpressions;
-using Npgsql;                                 // NpgsqlConnectionStringBuilder
-
-using BudgetForge.Application.Mapping;
-using BudgetForge.Application.Models;
-using BudgetForge.Application.Services;
-using BudgetForge.Application.Interfaces;
+using BudgetForge.Application.Models; // JwtSettings
 using BudgetForge.Infrastructure.Data;
-using BudgetForge.Infrastructure.Services;
-using BudgetForge.Infrastructure.Identity;     // AppUser
+using BudgetForge.Infrastructure.Identity; // AppUser
 
+// Application
+using BudgetForge.Application.Mapping;
+using BudgetForge.Infrastructure.Services; // Implementations
+using BudgetForge.Application.Interfaces; // Interfaces
+using BudgetForge.Application.Validators;
+
+// Billing
+using BudgetForge.Application.Interfaces.Billing;
+using BudgetForge.Infrastructure.Services.Billing;
+
+// Misc
 using FluentValidation;
 using FluentValidation.AspNetCore;
-using BudgetForge.Application.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------
-// Load .env explicitly from the repo root (dotnet watch runs
-// with content root at src/BudgetForge.Api, so default Env.Load()
-// may not find the file at the solution root).
+// Load .env from solution root (so dotnet watch finds it)
 // ---------------------------------------------------------
 var contentRoot = builder.Environment.ContentRootPath;               // .../src/BudgetForge.Api
 var solutionRoot = Path.GetFullPath(Path.Combine(contentRoot, "..", ".."));
 Env.Load(Path.Combine(solutionRoot, ".env"));
 
-// (Optional) Keep your placeholder expansion logic if you want to support ${VAR} in appsettings.json.
-// Not required anymore for DB/JWT because we read env directly below.
-var entries = builder.Configuration.AsEnumerable().ToList();
-foreach (var kv in entries)
+// Optional: expand ${VAR} placeholders found in config values
+foreach (var kv in builder.Configuration.AsEnumerable().ToList())
 {
     if (kv.Value is null) continue;
-    var expanded = Regex.Replace(kv.Value, @"\$\{([A-Z0-9_]+)\}",
+    var expanded = Regex.Replace(
+        kv.Value,
+        @"\$\{([A-Z0-9_]+)\}",
         m => Environment.GetEnvironmentVariable(m.Groups[1].Value) ?? m.Value,
-        RegexOptions.IgnoreCase);
+        RegexOptions.IgnoreCase
+    );
     if (!ReferenceEquals(expanded, kv.Value))
         builder.Configuration[kv.Key] = expanded;
 }
 
 // ---------------------------------------------------------
-// Helper: build the Postgres connection string from env vars
-// (fallback to appsettings if env missing). This avoids ${...}
-// parsing issues and ensures Port is a valid int.
+// Build Postgres connection string (env first, config fallback)
 // ---------------------------------------------------------
 string BuildConnectionString()
 {
@@ -60,14 +62,13 @@ string BuildConnectionString()
     var db   = Environment.GetEnvironmentVariable("DB_NAME");
     var user = Environment.GetEnvironmentVariable("DB_USER");
     var pass = Environment.GetEnvironmentVariable("DB_PASS");
-    var portVar = Environment.GetEnvironmentVariable("DB_PORT");
+    var port = Environment.GetEnvironmentVariable("DB_PORT");
 
     if (!string.IsNullOrWhiteSpace(host) &&
-        !string.IsNullOrWhiteSpace(db)   &&
+        !string.IsNullOrWhiteSpace(db) &&
         !string.IsNullOrWhiteSpace(user) &&
         !string.IsNullOrWhiteSpace(pass) &&
-        !string.IsNullOrWhiteSpace(portVar) &&
-        int.TryParse(portVar, out var port))
+        int.TryParse(port, out var p))
     {
         var csb = new NpgsqlConnectionStringBuilder
         {
@@ -75,58 +76,31 @@ string BuildConnectionString()
             Database = db,
             Username = user,
             Password = pass,
-            Port = port
+            Port = p
         };
         return csb.ToString();
     }
 
-    // Fallback to whatever is in appsettings.json
     return builder.Configuration.GetConnectionString("DefaultConnection")
            ?? throw new InvalidOperationException("No connection string configured.");
 }
 
-var builtConnString = BuildConnectionString(); // reuse in EF + health checks
+var builtConnString = BuildConnectionString();
 
-// Add services to the container.
+// ---------------------------------------------------------
+// Services
+// ---------------------------------------------------------
 builder.Services.AddControllers();
 
-// Mapping Profile 
+// AutoMapper / Validation
 builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
-
-// Register FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<CreateTransactionRequestValidator>();
 
-// EF Core (PostgreSQL) — use the built connection string
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builtConnString));
+// EF Core (PostgreSQL)
+builder.Services.AddDbContext<ApplicationDbContext>(opt => opt.UseNpgsql(builtConnString));
 
-// JWT Settings (bind from config, then override from env if present)
-builder.Services.Configure<JwtSettings>(
-    builder.Configuration.GetSection("JwtSettings"));
-
-var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
-    ?? throw new InvalidOperationException("JWT settings are not properly configured");
-
-// Override from env if provided (best practice for secrets)
-jwtSettings.SecretKey = Environment.GetEnvironmentVariable("JWT_SECRET")   ?? jwtSettings.SecretKey;
-jwtSettings.Issuer    = Environment.GetEnvironmentVariable("JWT_ISSUER")   ?? jwtSettings.Issuer;
-jwtSettings.Audience  = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? jwtSettings.Audience;
-
-if (string.IsNullOrWhiteSpace(jwtSettings.SecretKey))
-    throw new InvalidOperationException("JWT SecretKey is missing.");
-
-// JWT Token Service (keep for now; can remove once AuthController fully uses Identity)
-builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-
-// Core Services
-builder.Services.AddScoped<IAccountService, AccountService>();
-builder.Services.AddScoped<ITransactionService, TransactionService>();
-
-// Metrics Service
-builder.Services.AddSingleton<IMetricsService, MetricsService>();
-
-// ASP.NET Core Identity (users/roles) + EF store
+// Identity
 builder.Services
     .AddIdentityCore<AppUser>(o =>
     {
@@ -139,10 +113,34 @@ builder.Services
         o.Lockout.MaxFailedAccessAttempts = 5;
         o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(10);
     })
-    .AddRoles<IdentityRole<int>>()                     // role support
-    .AddEntityFrameworkStores<ApplicationDbContext>() // persist Identity in our DbContext
-    .AddSignInManager()                                // password/lockout checks
-    .AddDefaultTokenProviders();                       // email/2FA/reset tokens
+    .AddRoles<IdentityRole<int>>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddSignInManager()
+    .AddDefaultTokenProviders();
+
+// JWT settings: bind from config, then overlay env vars into the options
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.PostConfigure<JwtSettings>(opts =>
+{
+    var envSecret  = Environment.GetEnvironmentVariable("JWT_SECRET");
+    var envIssuer  = Environment.GetEnvironmentVariable("JWT_ISSUER");
+    var envAudience= Environment.GetEnvironmentVariable("JWT_AUDIENCE");
+    if (!string.IsNullOrWhiteSpace(envSecret))   opts.SecretKey = envSecret;
+    if (!string.IsNullOrWhiteSpace(envIssuer))   opts.Issuer = envIssuer;
+    if (!string.IsNullOrWhiteSpace(envAudience)) opts.Audience = envAudience;
+});
+
+// Build a merged instance for configuring JwtBearer right now
+var jwt = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+var envSecretNow   = Environment.GetEnvironmentVariable("JWT_SECRET");
+var envIssuerNow   = Environment.GetEnvironmentVariable("JWT_ISSUER");
+var envAudienceNow = Environment.GetEnvironmentVariable("JWT_AUDIENCE");
+if (!string.IsNullOrWhiteSpace(envSecretNow))   jwt.SecretKey = envSecretNow;
+if (!string.IsNullOrWhiteSpace(envIssuerNow))   jwt.Issuer = envIssuerNow;
+if (!string.IsNullOrWhiteSpace(envAudienceNow)) jwt.Audience = envAudienceNow;
+
+if (string.IsNullOrWhiteSpace(jwt.SecretKey))
+    throw new InvalidOperationException("JWT SecretKey is missing.");
 
 // Authentication
 builder.Services.AddAuthentication(options =>
@@ -153,21 +151,19 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.SaveToken = jwtSettings.SaveToken;
-    options.RequireHttpsMetadata = jwtSettings.RequireHttpsMetadata;
-
+    options.SaveToken = jwt.SaveToken;
+    options.RequireHttpsMetadata = jwt.RequireHttpsMetadata;
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuerSigningKey = jwtSettings.ValidateIssuerSigningKey,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
-        ValidateIssuer = jwtSettings.ValidateIssuer,
-        ValidIssuer = jwtSettings.Issuer,
-        ValidateAudience = jwtSettings.ValidateAudience,
-        ValidAudience = jwtSettings.Audience,
-        ValidateLifetime = jwtSettings.ValidateLifetime,
-        ClockSkew = TimeSpan.FromSeconds(jwtSettings.ClockSkewSeconds)
+        ValidateIssuerSigningKey = jwt.ValidateIssuerSigningKey,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SecretKey)),
+        ValidateIssuer = jwt.ValidateIssuer,
+        ValidIssuer = jwt.Issuer,
+        ValidateAudience = jwt.ValidateAudience,
+        ValidAudience = jwt.Audience,
+        ValidateLifetime = jwt.ValidateLifetime,
+        ClockSkew = TimeSpan.FromSeconds(jwt.ClockSkewSeconds)
     };
-
     options.Events = new JwtBearerEvents
     {
         OnAuthenticationFailed = context =>
@@ -207,9 +203,8 @@ builder.Services.AddAuthorization(options =>
     options.DefaultPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
-
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("UserOrAdmin", policy => policy.RequireRole("User", "Admin"));
+    options.AddPolicy("AdminOnly", p => p.RequireRole("Admin"));
+    options.AddPolicy("UserOrAdmin", p => p.RequireRole("User", "Admin"));
 });
 
 // CORS
@@ -217,19 +212,18 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3001") // add http://localhost:4200 later for Angular
+        policy.WithOrigins("http://localhost:3000", "https://localhost:3001", "http://localhost:4200")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
 });
 
-// Swagger (with JWT Bearer auth so the Authorize button works)
+// Swagger (JWT enabled)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "BudgetForge API", Version = "v1" });
-
     var scheme = new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -238,29 +232,30 @@ builder.Services.AddSwaggerGen(c =>
         Type = SecuritySchemeType.Http,
         Scheme = "Bearer",
         BearerFormat = "JWT",
-        Reference = new OpenApiReference
-        {
-            Type = ReferenceType.SecurityScheme,
-            Id = "Bearer"
-        }
+        Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
     };
-
     c.AddSecurityDefinition("Bearer", scheme);
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        { scheme, Array.Empty<string>() }
-    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement { { scheme, Array.Empty<string>() } });
 });
 
-// ---------- Health checks (use the same built connection) ----------
+// Health checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>(name: "ef-dbcontext")
     .AddNpgSql(builtConnString, name: "npgsql-connection");
-// -------------------------------------------------------------------
+
+// App services
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IAccountService, AccountService>();
+builder.Services.AddScoped<ITransactionService, TransactionService>();
+builder.Services.AddSingleton<IMetricsService, MetricsService>();
+
+// Billing services
+builder.Services.AddScoped<IBillQueries, BillQueries>();
+builder.Services.AddScoped<IBillCommands, BillCommands>();
 
 var app = builder.Build();
 
-// Seed Identity roles ("Admin", "User") at startup
+// Seed Identity roles
 using (var scope = app.Services.CreateScope())
 {
     var roleMgr = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<int>>>();
@@ -269,10 +264,10 @@ using (var scope = app.Services.CreateScope())
             await roleMgr.CreateAsync(new IdentityRole<int>(r));
 }
 
-// Prometheus metrics BEFORE other middleware
+// Prometheus first
 app.UseHttpMetrics();
 
-// HTTP pipeline
+// Pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -284,7 +279,6 @@ app.UseCors("DefaultPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Endpoint mapping
 app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
@@ -308,7 +302,6 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 });
 
 app.MapMetrics();
-
-// sanity endpoint
 app.MapGet("/ping", () => Results.Text("pong", "text/plain"));
+
 app.Run();

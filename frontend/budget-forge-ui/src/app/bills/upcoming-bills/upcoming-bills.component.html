@@ -1,0 +1,43 @@
+<div class="p-4 space-y-4">
+  <div class="flex items-center gap-3">
+    <h2 class="text-xl font-semibold">Upcoming Bills</h2>
+    <label class="text-sm">Days:
+      <input type="number" class="border rounded px-2 py-1 ml-2 w-24"
+             [ngModel]="days()" (ngModelChange)="days.set($event); load()" />
+    </label>
+  </div>
+
+  <div *ngIf="loading()" class="text-sm text-gray-500">Loading…</div>
+  <div *ngIf="error()" class="text-sm text-red-600">{{ error() }}</div>
+
+  <div *ngIf="!loading() && bills().length === 0" class="text-sm text-gray-500">
+    No upcoming bills in the next {{ days() }} day(s).
+  </div>
+
+  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4" *ngIf="!loading() && bills().length">
+    <div *ngFor="let b of bills()" class="border rounded-xl p-4 shadow-sm">
+      <div class="flex justify-between items-start">
+        <div>
+          <div class="font-medium">{{ b.name }}</div>
+          <div class="text-sm text-gray-500">
+            Due {{ b.dueDate }} • {{ b.daysUntilDue }} day(s)
+          </div>
+        </div>
+        <span class="text-xs px-2 py-1 rounded-full" [ngClass]="statusClass(b.status)">
+          {{ b.status === BillStatus.Overdue ? 'Overdue'
+               : b.status === BillStatus.DueSoon ? 'Due Soon'
+               : 'Pending' }}
+        </span>
+      </div>
+
+      <div class="text-2xl font-semibold mt-3">${{ b.amount | number:'1.2-2' }}</div>
+      <div class="text-xs text-gray-500 mt-1">
+        {{ b.isRecurring ? (b.frequency ?? 'Recurring') : 'One-time' }}
+      </div>
+
+      <button class="mt-4 border rounded-lg px-3 py-2 hover:bg-gray-50" (click)="markPaid(b)">
+        Mark as Paid
+      </button>
+    </div>
+  </div>
+</div>
