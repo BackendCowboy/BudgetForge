@@ -65,4 +65,5 @@ jenkins_home/
 # --- Misc ---
 *.pdb
 *.exe
-*.dll
+*.dll**/bin/
+**/obj/
