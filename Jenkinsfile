@@ -12,6 +12,8 @@ pipeline {
       steps {
         echo "Wiping workspace to avoid stale artifacts..."
         deleteDir()
+        // ADD THIS: Explicit checkout after deleteDir()
+        checkout scm
         sh '''
           echo "Dotnet info:"
           dotnet --info
@@ -37,6 +39,9 @@ pipeline {
 
           echo "📁 Workspace Contents (after checkout):"
           ls -la
+          
+          echo "📁 Solution file check:"
+          ls -la *.sln || echo "No .sln files found in root"
         '''
       }
     }
