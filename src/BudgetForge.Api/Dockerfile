@@ -8,6 +8,7 @@ COPY src/BudgetForge.Domain/BudgetForge.Domain.csproj src/BudgetForge.Domain/
 COPY src/BudgetForge.Application/BudgetForge.Application.csproj src/BudgetForge.Application/
 COPY src/BudgetForge.Infrastructure/BudgetForge.Infrastructure.csproj src/BudgetForge.Infrastructure/
 COPY src/BudgetForge.Api/BudgetForge.Api.csproj src/BudgetForge.Api/
+COPY tests/BudgetForge.Infrastructure.Tests/BudgetForge.Infrastructure.Tests.csproj tests/BudgetForge.Infrastructure.Tests/
 COPY BudgetForge.sln .
 
 # Restore dependencies with all transitive packages
@@ -15,6 +16,7 @@ RUN dotnet restore --verbosity normal
 
 # Copy source code
 COPY src/ src/
+COPY tests/ tests/
 
 # Build and publish in one step (avoids analyzer issues)
 RUN dotnet publish src/BudgetForge.Api/BudgetForge.Api.csproj \
