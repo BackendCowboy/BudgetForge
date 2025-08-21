@@ -12,7 +12,7 @@ pipeline {
       steps {
         echo "Wiping workspace to avoid stale artifacts..."
         deleteDir()
-        // ADD THIS: Explicit checkout after deleteDir()
+    
         checkout scm
         sh '''
           echo "Dotnet info:"
