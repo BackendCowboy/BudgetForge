@@ -1,0 +1,200 @@
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="userGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f0f0f0"/>
+      <stop offset="100%" style="stop-color:#e0e0e0"/>
+    </linearGradient>
+    <linearGradient id="frontendGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffd580"/>
+      <stop offset="100%" style="stop-color:#ffcc5c"/>
+    </linearGradient>
+    <linearGradient id="ingressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffecb3"/>
+      <stop offset="100%" style="stop-color:#ffe082"/>
+    </linearGradient>
+    <linearGradient id="apiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a3d5ff"/>
+      <stop offset="100%" style="stop-color:#81c7ff"/>
+    </linearGradient>
+    <linearGradient id="postgresGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d0e6a5"/>
+      <stop offset="100%" style="stop-color:#aed581"/>
+    </linearGradient>
+    <linearGradient id="redisGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f7a8a8"/>
+      <stop offset="100%" style="stop-color:#ef5350"/>
+    </linearGradient>
+    <linearGradient id="prometheusGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff9999"/>
+      <stop offset="100%" style="stop-color:#ff7043"/>
+    </linearGradient>
+    <linearGradient id="grafanaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffcc99"/>
+      <stop offset="100%" style="stop-color:#ffab40"/>
+    </linearGradient>
+    <linearGradient id="jenkinsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c2f0c2"/>
+      <stop offset="100%" style="stop-color:#81c784"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Title -->
+  <text x="600" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#333">
+    BudgetForge Architecture
+  </text>
+
+  <!-- Connection lines -->
+  <g stroke="#666" stroke-width="2" fill="none">
+    <!-- User to Frontend -->
+    <line x1="150" y1="250" x2="250" y2="250"/>
+    <polygon points="245,245 250,250 245,255" fill="#666"/>
+    
+    <!-- Frontend to Ingress -->
+    <line x1="350" y1="250" x2="450" y2="200"/>
+    <polygon points="445,205 450,200 450,210" fill="#666"/>
+    
+    <!-- Ingress to API -->
+    <line x1="550" y1="200" x2="650" y2="250"/>
+    <polygon points="645,245 650,250 645,255" fill="#666"/>
+    
+    <!-- API to PostgreSQL -->
+    <line x1="750" y1="250" x2="850" y2="150"/>
+    <polygon points="845,155 850,150 850,160" fill="#666"/>
+    
+    <!-- API to Redis -->
+    <line x1="750" y1="250" x2="850" y2="350"/>
+    <polygon points="845,345 850,350 845,355" fill="#666"/>
+    
+    <!-- Prometheus to API -->
+    <line x1="500" y1="550" x2="700" y2="300"/>
+    <polygon points="695,305 700,300 705,305" fill="#666"/>
+    
+    <!-- Grafana to Prometheus -->
+    <line x1="600" y1="550" x2="550" y2="550"/>
+    <polygon points="555,545 550,550 555,555" fill="#666"/>
+    
+    <!-- Jenkins to API -->
+    <line x1="300" y1="550" x2="700" y2="300"/>
+    <polygon points="695,305 700,300 705,305" fill="#666"/>
+    
+    <!-- Jenkins to Frontend -->
+    <line x1="300" y1="500" x2="300" y2="300"/>
+    <polygon points="295,305 300,300 305,305" fill="#666"/>
+  </g>
+
+  <!-- Components -->
+  <!-- User -->
+  <g>
+    <ellipse cx="100" cy="250" rx="50" ry="30" fill="url(#userGrad)" stroke="#ccc" stroke-width="2"/>
+    <text x="100" y="240" text-anchor="middle" font-family="Arial" font-size="24">👤</text>
+    <text x="100" y="260" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">User</text>
+    <text x="100" y="275" text-anchor="middle" font-family="Arial" font-size="10">(Browser)</text>
+  </g>
+
+  <!-- Frontend -->
+  <g>
+    <rect x="250" y="200" width="100" height="100" rx="12" fill="url(#frontendGrad)"/>
+    <text x="300" y="235" text-anchor="middle" font-family="Arial" font-size="24">🅰️</text>
+    <text x="300" y="255" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Angular</text>
+    <text x="300" y="270" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Frontend</text>
+    <text x="300" y="285" text-anchor="middle" font-family="Arial" font-size="10">(budget-forge-ui)</text>
+  </g>
+
+  <!-- Ingress (Diamond) -->
+  <g>
+    <polygon points="500,150 550,200 500,250 450,200" fill="url(#ingressGrad)"/>
+    <text x="500" y="190" text-anchor="middle" font-family="Arial" font-size="20">🌐</text>
+    <text x="500" y="210" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold">NGINX</text>
+    <text x="500" y="225" text-anchor="middle" font-family="Arial" font-size="10">Ingress</text>
+  </g>
+
+  <!-- API -->
+  <g>
+    <rect x="650" y="200" width="100" height="100" rx="12" fill="url(#apiGrad)"/>
+    <text x="700" y="235" text-anchor="middle" font-family="Arial" font-size="24">⚙️</text>
+    <text x="700" y="255" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">ASP.NET Core</text>
+    <text x="700" y="270" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">API</text>
+    <text x="700" y="285" text-anchor="middle" font-family="Arial" font-size="10">(BudgetForge.Api)</text>
+  </g>
+
+  <!-- PostgreSQL -->
+  <g>
+    <rect x="800" y="100" width="100" height="80" rx="12" fill="url(#postgresGrad)"/>
+    <ellipse cx="850" cy="100" rx="50" ry="12" fill="url(#postgresGrad)"/>
+    <text x="850" y="125" text-anchor="middle" font-family="Arial" font-size="24">🗄️</text>
+    <text x="850" y="145" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">PostgreSQL</text>
+    <text x="850" y="160" text-anchor="middle" font-family="Arial" font-size="10">Database</text>
+  </g>
+
+  <!-- Redis -->
+  <g>
+    <rect x="800" y="320" width="100" height="80" rx="12" fill="url(#redisGrad)"/>
+    <ellipse cx="850" cy="320" rx="50" ry="12" fill="url(#redisGrad)"/>
+    <text x="850" y="345" text-anchor="middle" font-family="Arial" font-size="24">💾</text>
+    <text x="850" y="365" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Redis</text>
+    <text x="850" y="380" text-anchor="middle" font-family="Arial" font-size="10">Cache</text>
+  </g>
+
+  <!-- Prometheus -->
+  <g>
+    <rect x="450" y="500" width="100" height="100" rx="12" fill="url(#prometheusGrad)"/>
+    <text x="500" y="535" text-anchor="middle" font-family="Arial" font-size="24">📊</text>
+    <text x="500" y="555" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Prometheus</text>
+    <text x="500" y="570" text-anchor="middle" font-family="Arial" font-size="10">Monitoring</text>
+  </g>
+
+  <!-- Grafana -->
+  <g>
+    <rect x="600" y="500" width="100" height="100" rx="12" fill="url(#grafanaGrad)"/>
+    <text x="650" y="535" text-anchor="middle" font-family="Arial" font-size="24">📈</text>
+    <text x="650" y="555" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Grafana</text>
+    <text x="650" y="570" text-anchor="middle" font-family="Arial" font-size="10">Dashboards</text>
+  </g>
+
+  <!-- Jenkins -->
+  <g>
+    <rect x="250" y="500" width="100" height="100" rx="12" fill="url(#jenkinsGrad)"/>
+    <text x="300" y="535" text-anchor="middle" font-family="Arial" font-size="24">🔄</text>
+    <text x="300" y="555" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Jenkins</text>
+    <text x="300" y="570" text-anchor="middle" font-family="Arial" font-size="10">CI/CD</text>
+  </g>
+
+  <!-- Labels for connections -->
+  <g font-family="Arial" font-size="10" fill="#666">
+    <rect x="190" y="240" width="60" height="20" rx="4" fill="white" stroke="#ddd"/>
+    <text x="220" y="252" text-anchor="middle">HTTP</text>
+    
+    <rect x="750" y="190" width="80" height="20" rx="4" fill="white" stroke="#ddd"/>
+    <text x="790" y="202" text-anchor="middle">DB Connection</text>
+    
+    <rect x="750" y="310" width="60" height="20" rx="4" fill="white" stroke="#ddd"/>
+    <text x="780" y="322" text-anchor="middle">Cache</text>
+    
+    <rect x="580" y="400" width="80" height="20" rx="4" fill="white" stroke="#ddd"/>
+    <text x="620" y="412" text-anchor="middle">Scrape Metrics</text>
+    
+    <rect x="520" y="540" width="60" height="20" rx="4" fill="white" stroke="#ddd"/>
+    <text x="550" y="552" text-anchor="middle">Visualize</text>
+    
+    <rect x="380" y="400" width="50" height="20" rx="4" fill="white" stroke="#ddd"/>
+    <text x="405" y="412" text-anchor="middle">Deploy</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(50, 650)">
+    <text x="0" y="15" font-family="Arial" font-size="14" font-weight="bold" fill="#333">Technology Stack:</text>
+    
+    <rect x="0" y="25" width="15" height="15" fill="url(#frontendGrad)"/>
+    <text x="20" y="37" font-family="Arial" font-size="12" fill="#666">Frontend: Angular 17 + TypeScript</text>
+    
+    <rect x="250" y="25" width="15" height="15" fill="url(#apiGrad)"/>
+    <text x="270" y="37" font-family="Arial" font-size="12" fill="#666">Backend: .NET 8 + ASP.NET Core</text>
+    
+    <rect x="500" y="25" width="15" height="15" fill="url(#jenkinsGrad)"/>
+    <text x="520" y="37" font-family="Arial" font-size="12" fill="#666">DevOps: Kubernetes + Docker</text>
+    
+    <rect x="750" y="25" width="15" height="15" fill="url(#postgresGrad)"/>
+    <text x="770" y="37" font-family="Arial" font-size="12" fill="#666">Storage: PostgreSQL + Redis</text>
+  </g>
+</svg>
