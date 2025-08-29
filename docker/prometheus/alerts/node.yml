@@ -1,0 +1,21 @@
+groups:
+- name: node
+  rules:
+  - alert: NodeDiskSpaceLow
+    expr: |
+      (sum by (instance) (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|aufs|squashfs|ramfs|devtmpfs"}) 
+       / sum by (instance) (node_filesystem_size_bytes{fstype!~"tmpfs|overlay|aufs|squashfs|ramfs|devtmpfs"})) < 0.10
+    for: 10m
+    labels: {severity: warning, service: node}
+    annotations:
+      summary: "Disk free < 10%"
+      description: "Free space below 10% for 10m."
+
+  - alert: NodeCPUHigh
+    expr: |
+      (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.8
+    for: 10m
+    labels: {severity: warning, service: node}
+    annotations:
+      summary: "CPU > 80% for 10m"
+      description: "High CPU usage on {{ $labels.instance }}."

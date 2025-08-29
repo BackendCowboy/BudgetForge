@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api
+  namespace: monitoring
+  labels:
+    release: kube-prom-stack
+spec:
+  namespaceSelector:
+    matchNames: ["budgetforge"]
+  selector:
+    matchLabels:
+      app: api
+      monitor: "true"
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

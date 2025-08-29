@@ -1,14 +1,14 @@
+
 services:
-  # PostgreSQL Database (your existing setup enhanced)
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: budgetforge-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: budgetforge
-      POSTGRES_USER: budgetforge_user
-      POSTGRES_PASSWORD: your_secure_password_123
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
     ports:
       - "5432:5432"
     volumes:
@@ -17,13 +17,13 @@ services:
     networks:
       - budgetforge-backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U budgetforge_user -d budgetforge"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
-  # BudgetForge API (your containerized application)
+  # BudgetForge API
   api:
     build:
       context: .
@@ -32,9 +32,10 @@ services:
     container_name: budgetforge-api
     restart: unless-stopped
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__DefaultConnection=Host=postgres;Database=budgetforge_v2;Username=budgetforge_user;Password=your_secure_password_123;Port=5432
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      ENABLE_SWAGGER: "true"
+      ConnectionStrings__DefaultConnection: ${DB_CONN}
     ports:
       - "18080:8080"
     depends_on:
@@ -44,13 +45,13 @@ services:
       - budgetforge-backend
       - budgetforge-frontend
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
-  # pgAdmin for database management
+  # pgAdmin
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: budgetforge-pgadmin
@@ -70,7 +71,7 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
-  # Prometheus for metrics collection
+  # Prometheus
   prometheus:
     image: prom/prometheus:latest
     container_name: budgetforge-prometheus
@@ -85,6 +86,7 @@ services:
       - "19090:9090"
     volumes:
       - ./docker/prometheus:/etc/prometheus
+      - ./docker/prometheus/rules:/etc/prometheus/rules
       - prometheus_data:/prometheus
     networks:
       - budgetforge-monitoring
@@ -92,25 +94,25 @@ services:
     depends_on:
       - api
 
-  # Grafana for dashboards
+  # Grafana
   grafana:
     image: grafana/grafana:latest
     container_name: budgetforge-grafana
     restart: unless-stopped
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
     ports:
       - "3000:3000"
     volumes:
-      - grafana_data:/var/lib/grafana
+      - ./docker-data/grafana:/var/lib/grafana
       - ./docker/grafana:/etc/grafana/provisioning
     networks:
       - budgetforge-monitoring
     depends_on:
       - prometheus
 
-  # Jenkins CI/CD Pipeline (Enhanced with Docker CLI and .NET SDK)
+  # Jenkins
   jenkins:
     build:
       context: ./jenkins
@@ -119,13 +121,16 @@ services:
     restart: unless-stopped
     user: root
     environment:
-      - DOCKER_HOST=unix:///var/run/docker.sock
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      DOCKER_HOST: unix:///var/run/docker.sock
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false
+      JENKINS_ADMIN_USER: admin
+      JENKINS_ADMIN_PASS: admin123
     ports:
       - "8082:8080"
       - "50000:50000"
     volumes:
-      - jenkins_data:/var/jenkins_home
+      - ./docker-data/jenkins:/var/jenkins_home
+      - ./docker-data/jenkins/init.groovy.d:/var/jenkins_home/init.groovy.d:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ./scripts:/scripts:ro
     networks:
@@ -134,19 +139,19 @@ services:
     depends_on:
       - api
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/login"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
 
-# PostgreSQL Exporter - Exports PostgreSQL metrics to Prometheus
+  # PostgreSQL Exporter
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:latest
     container_name: budgetforge-postgres-exporter
     restart: unless-stopped
     environment:
-     DATA_SOURCE_NAME: "postgresql://budgetforge_user:your_secure_password_123@postgres:5432/budgetforge_v2?sslmode=disable"
+      DATA_SOURCE_NAME: postgresql://${DB_USER}:${DB_PASS}@postgres:5432/${DB_NAME}?sslmode=disable
     ports:
       - "9187:9187"
     depends_on:
@@ -156,13 +161,13 @@ services:
       - budgetforge-backend
       - budgetforge-monitoring
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9187/metrics"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:9187/metrics"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
-  # Node Exporter - Exports system metrics (CPU, memory, disk)
+  # Node Exporter
   node-exporter:
     image: prom/node-exporter:latest
     container_name: budgetforge-node-exporter
@@ -181,33 +186,46 @@ services:
     networks:
       - budgetforge-monitoring
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9100/metrics"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:9100/metrics"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
-# Persistent volumes
+  # Alertmanager
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: budgetforge-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=:9093"
+    environment:
+      ALERTMANAGER_SLACK_WEBHOOK: ${ALERTMANAGER_SLACK_WEBHOOK}
+    volumes:
+      - ./docker/alertmanager:/etc/alertmanager
+    networks:
+      - budgetforge-monitoring
+    #Redis
+  redis:
+    image: redis:7-alpine
+    container_name: budgetforge-redis
+    command: ["redis-server", "--appendonly", "yes"]  # enables AOF persistence
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./docker-data/redis:/data
+    networks:
+      - budgetforge-backend
 volumes:
   postgres_data:
-    driver: local
   pgadmin_data:
-    driver: local
   prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
-  jenkins_data:
-    driver: local
 
-# Network segmentation for security
 networks:
   budgetforge-backend:
-    driver: bridge
-    name: budgetforge-backend
   budgetforge-frontend:
-    driver: bridge  
-    name: budgetforge-frontend
   budgetforge-monitoring:
-    driver: bridge
-    name: budgetforge-monitoring

@@ -67,3 +67,4 @@ jenkins_home/
 *.exe
 *.dll**/bin/
 **/obj/
+docker/alertmanager/alertmanager.yml

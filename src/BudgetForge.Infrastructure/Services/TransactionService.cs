@@ -33,20 +33,22 @@ namespace BudgetForge.Infrastructure.Services
             if (account == null)
                 throw new UnauthorizedAccessException("Account not found or not owned by user.");
 
+            var signed = SignedAmount(request.Type, request.Amount);
+
+
             var tx = new Transaction
             {
                 AccountId = request.AccountId,
-                // no UserId here, we use Account.UserId for ownership
                 Type = request.Type,
                 Description = request.Description ?? string.Empty,
-                Amount = request.Amount,
+                Amount = signed,
                 Date = request.Timestamp ?? DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 IsDeleted = false
             };
 
-            account.Balance += SignedAmount(tx.Type, tx.Amount);
+            account.Balance += signed;
             account.UpdatedAt = DateTime.UtcNow;
 
             _context.Transactions.Add(tx);
@@ -105,19 +107,22 @@ namespace BudgetForge.Infrastructure.Services
             var account = tx.Account!;
 
             // Reverse old effect
-            account.Balance -= SignedAmount(tx.Type, tx.Amount);
+account.Balance -= SignedAmount(tx.Type, tx.Amount);
 
-            // Apply partial updates
-            if (request.Type.HasValue)          tx.Type = request.Type.Value;
-            if (request.Amount.HasValue)        tx.Amount = request.Amount.Value;
-            if (request.Description is not null) tx.Description = request.Description;
-            if (request.Timestamp.HasValue)     tx.Date = request.Timestamp.Value;
+// Apply partial updates
+if (request.Type.HasValue)      tx.Type = request.Type.Value;
+if (request.Amount.HasValue)    tx.Amount = request.Amount.Value;
+if (request.Description != null) tx.Description = request.Description;
+if (request.Timestamp.HasValue) tx.Date = request.Timestamp.Value;
 
-            tx.UpdatedAt = DateTime.UtcNow;
+// Re-normalize stored amount based on (possibly) new Type/Amount
+tx.Amount = SignedAmount(tx.Type, tx.Amount);
 
-            // Apply new effect
-            account.Balance += SignedAmount(tx.Type, tx.Amount);
-            account.UpdatedAt = DateTime.UtcNow;
+tx.UpdatedAt = DateTime.UtcNow;
+
+// Apply new effect
+account.Balance += SignedAmount(tx.Type, tx.Amount);
+account.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
             return true;

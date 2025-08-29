@@ -1,6 +1,7 @@
-version: "3.9"
-
 services:
-  budgetforge-api:
+  api:
     env_file:
       - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ENABLE_SWAGGER: "true"

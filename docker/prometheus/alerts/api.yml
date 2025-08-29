@@ -1,0 +1,47 @@
+groups:
+- name: budgetforge-api
+  rules:
+  # API instance down
+  - alert: APIInstanceDown
+    expr: up{job="budgetforge-api"} == 0
+    for: 2m
+    labels: {severity: critical, service: budgetforge-api}
+    annotations:
+      summary: "API down"
+      description: "No scrape from budgetforge-api for 2m."
+
+  # p95 latency high (uses your histogram)
+  - alert: APILatencyP95High
+    expr: |
+      histogram_quantile(
+        0.95,
+        sum by (le) (rate(http_request_duration_seconds_bucket{job="budgetforge-api"}[5m]))
+      ) > 0.2  # 200ms
+    for: 5m
+    labels: {severity: warning, service: budgetforge-api}
+    annotations:
+      summary: "API p95 latency > 200ms (5m)"
+      description: "p95 latency is {{ $value | humanizeDuration }}."
+
+  # Memory RSS high
+  - alert: APIMemoryHigh
+    expr: process_resident_memory_bytes{job="budgetforge-api"} > 300 * 1024 * 1024
+    for: 10m
+    labels: {severity: warning, service: budgetforge-api}
+    annotations:
+      summary: "API RSS memory > 300MiB"
+      description: "Current RSS {{ $value | humanize1024 }} > 300MiB for 10m."
+
+  # 5xx error rate (only if you have a 'status' label on requests)
+  - alert: APIHighErrorRate
+    expr: |
+      (
+        sum(rate(http_requests_received_total{job="budgetforge-api", status=~"5.."}[5m])) 
+        /
+        clamp_min(sum(rate(http_requests_received_total{job="budgetforge-api"}[5m])), 1)
+      ) > 0.05
+    for: 10m
+    labels: {severity: critical, service: budgetforge-api}
+    annotations:
+      summary: "API 5xx error rate > 5% (10m)"
+      description: "5xx ratio above 5% for 10m."

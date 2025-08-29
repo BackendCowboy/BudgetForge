@@ -1,0 +1,33 @@
+groups:
+  - name: basic-health
+    rules:
+      # Always-on test alert to verify Slack wiring
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: info
+        annotations:
+          summary: "Watchdog is firing (sanity check)"
+          description: "This alert is always firing to confirm the pipeline to Alertmanager/Slack works."
+
+      # Any target in our stack down for 1 minute
+      - alert: InstanceDown
+        expr: up{job=~"budgetforge-api|postgresql|node-exporter|jenkins|prometheus"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: "Job {{ $labels.job }} on {{ $labels.instance }} has been down for >1m."
+
+  - name: ci-observability
+    rules:
+      # Jenkins failure seen at any point in the last 5 minutes
+      - alert: JenkinsBuildFailure
+        expr: max_over_time((jenkins_builds_last_stage_result_ordinal == 5)[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jenkins reported failed builds"
+          description: "At least one Jenkins pipeline was FAILURE (ordinal=5) at any point in the last 5 minutes."

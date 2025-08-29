@@ -1,0 +1,18 @@
+groups:
+- name: general
+  rules:
+  - alert: TargetDown
+    expr: up == 0
+    for: 2m
+    labels: {severity: critical}
+    annotations:
+      summary: "Scrape target down"
+      description: "{{ $labels.job }} on {{ $labels.instance }} is down."
+
+  - alert: PrometheusRuleEvalSlow
+    expr: prometheus_rule_evaluation_duration_seconds{quantile="0.99"} > 1
+    for: 5m
+    labels: {severity: warning, service: prometheus}
+    annotations:
+      summary: "Prometheus slow rule eval"
+      description: "99th percentile rule eval > 1s."

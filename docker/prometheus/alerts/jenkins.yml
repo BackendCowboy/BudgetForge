@@ -1,0 +1,19 @@
+groups:
+- name: jenkins
+  rules:
+  - alert: JenkinsHealthLow
+    expr: jenkins_health_score < 10
+    for: 2m
+    labels: {severity: critical, service: jenkins}
+    annotations:
+      summary: "Jenkins health score low"
+      description: "jenkins_health_score={{ $value }} < 10."
+
+  # '5' corresponds to FAILED in the plugin's ordinal mapping
+  - alert: JenkinsBuildFailed
+    expr: sum((jenkins_builds_last_stage_result_ordinal == 5)) > 0
+    for: 0m
+    labels: {severity: warning, service: jenkins}
+    annotations:
+      summary: "Latest Jenkins build failed"
+      description: "One or more last-stage results are FAILED."
